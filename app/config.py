@@ -1,16 +1,17 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+import os
 
 
 class Settings(BaseSettings):
     # Bot
-    BOT_TOKEN: str
+    BOT_TOKEN: str = ""  # Optional - app will start but bot won't work without it
     BOT_USERNAME: Optional[str] = ""
 
-    # Web App
-    WEBAPP_URL: str = "https://cortex-post.up.railway.app"
+    # Web App - Railway provides PORT env variable
+    WEBAPP_URL: str = ""
     WEBAPP_HOST: str = "0.0.0.0"
-    WEBAPP_PORT: int = 8000
+    WEBAPP_PORT: int = int(os.environ.get("PORT", "8000"))  # Railway provides PORT
 
     # Database
     DATABASE_PATH: str = "cortex_post.db"
@@ -51,6 +52,16 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+    @property
+    def is_bot_configured(self) -> bool:
+        """Check if bot token is configured."""
+        return bool(self.BOT_TOKEN and len(self.BOT_TOKEN) > 10)
+
+    @property
+    def use_webhook(self) -> bool:
+        """Determine if webhook mode should be used."""
+        return bool(self.WEBAPP_URL and self.WEBAPP_URL.startswith("https://"))
 
 
 settings = Settings()

@@ -18,12 +18,9 @@ COPY . .
 # Create data directory for SQLite
 RUN mkdir -p /data
 
-# Expose port
+# Expose port 8000 (informational - Railway uses PORT env or this)
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
-
-# Run the application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application - use PORT env variable with fallback to 8000
+# Shell form CMD allows environment variable expansion
+CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

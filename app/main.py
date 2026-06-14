@@ -33,113 +33,118 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Global bot and dispatcher
-bot: Bot = None
-dp: Dispatcher = None
+bot: Bot | None = None
+dp: Dispatcher | None = None
 
-# Use webhook mode when WEBAPP_URL is set, otherwise fall back to polling
-USE_WEBHOOK = bool(settings.WEBAPP_URL and settings.WEBAPP_URL.startswith("https://"))
-
-
-async def on_startup():
-    """Initialize all services on startup."""
-    global bot, dp
-    
-    logger.info("Starting Cortex Post...")
-    
-    # Connect to database
-    await db.connect()
-    logger.info("Database connected")
-    
-    # Initialize database schema
-    await crud.init_db()
-    logger.info("Database schema initialized")
-    
-    # Initialize bot
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    
-    # Initialize dispatcher
-    dp = Dispatcher(storage=MemoryStorage())
-    
-    # Register all bot routers
-    for router in all_routers:
-        dp.include_router(router)
-    
-    logger.info("Bot dispatcher configured")
-    
-    # Set bot instance in telegram publisher
-    telegram_publisher.set_bot(bot)
-    logger.info("Telegram publisher initialized")
-    
-    # Start scheduler
-    await cortex_scheduler.start()
-    logger.info("Scheduler started")
-    
-    # Set bot commands
-    from aiogram.types import BotCommand
-    await bot.set_my_commands([
-        BotCommand(command="start", description="بدء البوت"),
-        BotCommand(command="help", description="المساعدة"),
-        BotCommand(command="panel", description="لوحة التحكم"),
-        BotCommand(command="stats", description="الإحصائيات"),
-    ])
-    
-    # Set up webhook or delete it for polling
-    if USE_WEBHOOK:
-        webhook_url = f"{settings.WEBAPP_URL}/webhook/bot"
-        await bot.set_webhook(
-            url=webhook_url,
-            allowed_updates=dp.resolve_used_update_types(),
-            drop_pending_updates=True,
-        )
-        logger.info(f"Webhook set to: {webhook_url}")
-    else:
-        await bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Webhook deleted - using polling mode")
-    
-    logger.info(f"Cortex Post started successfully! 🧠 (mode: {'webhook' if USE_WEBHOOK else 'polling'})")
-
-
-async def on_shutdown():
-    """Cleanup on shutdown."""
-    global bot, dp
-    
-    logger.info("Shutting down Cortex Post...")
-    
-    # Stop scheduler
-    await cortex_scheduler.stop()
-    
-    # Delete webhook if using webhook mode
-    if bot:
-        if USE_WEBHOOK:
-            await bot.delete_webhook()
-        await bot.session.close()
-    
-    # Disconnect database
-    await db.disconnect()
-    
-    logger.info("Cortex Post shut down complete")
-
+# Track startup state for healthcheck
+_startup_complete = False
+_startup_error: str | None = None
 
 # Track the polling task
 _polling_task = None
 
 
+async def init_bot():
+    """Initialize the Telegram bot - called separately so it doesn't block the web server."""
+    global bot, dp, _startup_complete, _startup_error
+
+    if not settings.is_bot_configured:
+        logger.warning("BOT_TOKEN not configured - bot functionality disabled. Set BOT_TOKEN env variable.")
+        _startup_complete = True
+        return
+
+    try:
+        # Initialize bot
+        bot = Bot(
+            token=settings.BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+
+        # Initialize dispatcher
+        dp = Dispatcher(storage=MemoryStorage())
+
+        # Register all bot routers
+        for router in all_routers:
+            dp.include_router(router)
+
+        logger.info("Bot dispatcher configured")
+
+        # Set bot instance in telegram publisher
+        telegram_publisher.set_bot(bot)
+        logger.info("Telegram publisher initialized")
+
+        # Set bot commands
+        from aiogram.types import BotCommand
+        await bot.set_my_commands([
+            BotCommand(command="start", description="بدء البوت"),
+            BotCommand(command="help", description="المساعدة"),
+            BotCommand(command="panel", description="لوحة التحكم"),
+            BotCommand(command="stats", description="الإحصائيات"),
+        ])
+
+        # Set up webhook or delete it for polling
+        if settings.use_webhook:
+            webhook_url = f"{settings.WEBAPP_URL}/webhook/bot"
+            await bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=dp.resolve_used_update_types(),
+                drop_pending_updates=True,
+            )
+            logger.info(f"Webhook set to: {webhook_url}")
+        else:
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook deleted - using polling mode")
+
+        logger.info(f"Cortex Post bot initialized! 🧠 (mode: {'webhook' if settings.use_webhook else 'polling'})")
+
+    except Exception as e:
+        logger.error(f"Bot initialization error: {e}")
+        _startup_error = str(e)
+        # Don't crash - the web server should still work for healthchecks
+        bot = None
+        dp = None
+
+    _startup_complete = True
+
+
+async def init_database():
+    """Initialize database connection and schema."""
+    try:
+        await db.connect()
+        logger.info("Database connected")
+
+        # Initialize database schema
+        await crud.init_db()
+        logger.info("Database schema initialized")
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+        # Try to continue - some features may not work
+
+
+async def init_scheduler():
+    """Start the APScheduler."""
+    try:
+        await cortex_scheduler.start()
+        logger.info("Scheduler started")
+    except Exception as e:
+        logger.error(f"Scheduler initialization error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan handler."""
+    """FastAPI lifespan handler - starts web server FIRST, then initializes services in background."""
     global _polling_task
-    
-    await on_startup()
-    
-    # If not using webhook, start polling in background
-    if not USE_WEBHOOK:
-        _polling_task = asyncio.create_task(start_bot_polling())
-    
+
+    # Step 1: Initialize database immediately (needed for healthcheck)
+    await init_database()
+
+    # Step 2: Start bot initialization in background
+    # This way the web server can start accepting healthcheck requests right away
+    asyncio.create_task(_background_init())
+
     yield
-    
+
+    # Cleanup
     # Cancel polling if running
     if _polling_task:
         _polling_task.cancel()
@@ -147,14 +152,55 @@ async def lifespan(app: FastAPI):
             await _polling_task
         except asyncio.CancelledError:
             pass
-    
-    await on_shutdown()
+
+    # Stop scheduler
+    try:
+        await cortex_scheduler.stop()
+    except Exception:
+        pass
+
+    # Delete webhook and close bot
+    if bot:
+        try:
+            if settings.use_webhook:
+                await bot.delete_webhook()
+            await bot.session.close()
+        except Exception:
+            pass
+
+    # Disconnect database
+    try:
+        await db.disconnect()
+    except Exception:
+        pass
+
+    logger.info("Cortex Post shut down complete")
+
+
+async def _background_init():
+    """Run bot init + scheduler init in background after the web server is up."""
+    global _polling_task
+
+    # Small delay to let the web server start accepting connections first
+    await asyncio.sleep(2)
+
+    # Initialize bot (webhook or polling)
+    await init_bot()
+
+    # Start scheduler (depends on DB being ready, not on bot)
+    await init_scheduler()
+
+    # If not using webhook and bot is ready, start polling in background
+    if not settings.use_webhook and bot and dp:
+        _polling_task = asyncio.create_task(start_bot_polling())
+
+    logger.info("All background initialization complete")
 
 
 async def start_bot_polling():
     """Start bot polling in background (fallback mode)."""
     global bot, dp
-    
+
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except asyncio.CancelledError:
@@ -201,11 +247,14 @@ async def dashboard():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
+    """Health check endpoint - always returns 200 so Railway doesn't kill the deployment."""
     return {
         "status": "healthy",
         "database": "connected" if db.is_connected else "disconnected",
-        "mode": "webhook" if USE_WEBHOOK else "polling",
+        "bot": "configured" if bot else "not_configured",
+        "mode": "webhook" if settings.use_webhook else "polling",
+        "startup_complete": _startup_complete,
+        "startup_error": _startup_error,
     }
 
 
@@ -217,17 +266,21 @@ async def telegram_webhook(request: Request):
     This endpoint receives POST requests from Telegram servers.
     """
     global bot, dp
-    
-    if not USE_WEBHOOK:
+
+    if not settings.use_webhook:
         return Response(status_code=403, content="Webhook mode not enabled")
-    
+
+    if not bot or not dp:
+        logger.warning("Webhook received but bot not initialized yet")
+        return Response(status_code=200)  # Return 200 to not retry
+
     try:
         body = await request.json()
         update = Update(**body)
-        
+
         # Process the update through the dispatcher
         await dp._process_update(bot, update)
-        
+
         return Response(status_code=200)
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
