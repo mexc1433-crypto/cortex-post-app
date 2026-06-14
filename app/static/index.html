@@ -1,0 +1,2117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cortex Post</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* ============================================================
+           RESET & BASE
+           ============================================================ */
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #263348;
+            --bg-input: #334155;
+            --accent: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --accent-light: rgba(139, 92, 246, 0.15);
+            --success: #10b981;
+            --success-light: rgba(16, 185, 129, 0.15);
+            --danger: #ef4444;
+            --danger-light: rgba(239, 68, 68, 0.15);
+            --warning: #f59e0b;
+            --warning-light: rgba(245, 158, 11, 0.15);
+            --info: #3b82f6;
+            --info-light: rgba(59, 130, 246, 0.15);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #334155;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+            --nav-height: 64px;
+            --header-height: 56px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Arabic', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: calc(var(--nav-height) + 20px);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* ============================================================
+           SCROLLBAR
+           ============================================================ */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* ============================================================
+           HEADER
+           ============================================================ */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f3a 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-logo {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), #6d28d9);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .header-btn:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        /* ============================================================
+           SECTIONS
+           ============================================================ */
+        .section {
+            display: none;
+            padding: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ============================================================
+           STATS GRID (Home)
+           ============================================================ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 4px;
+            height: 100%;
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+
+        .stat-card.accent::before { background: var(--accent); }
+        .stat-card.success::before { background: var(--success); }
+        .stat-card.warning::before { background: var(--warning); }
+        .stat-card.info::before { background: var(--info); }
+
+        .stat-card:active {
+            transform: scale(0.98);
+        }
+
+        .stat-icon {
+            font-size: 22px;
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================================
+           CARDS (Generic)
+           ============================================================ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+
+        .card:active {
+            transform: scale(0.99);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .card-body {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================================
+           BADGES
+           ============================================================ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge-accent { background: var(--accent-light); color: var(--accent); }
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-danger { background: var(--danger-light); color: var(--danger); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); }
+        .badge-info { background: var(--info-light); color: var(--info); }
+
+        .badge-telegram { background: rgba(0, 136, 204, 0.15); color: #0088cc; }
+        .badge-twitter { background: rgba(29, 161, 242, 0.15); color: #1da1f2; }
+        .badge-crypto { background: rgba(247, 147, 26, 0.15); color: #f7931a; }
+        .badge-rss { background: rgba(255, 165, 0, 0.15); color: #ffa500; }
+        .badge-sports { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .badge-weather { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+        .badge-religious { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+        .badge-webhook { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
+
+        /* ============================================================
+           TOGGLE SWITCH
+           ============================================================ */
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--bg-input);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            right: 3px;
+            bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+
+        .toggle input:checked + .toggle-slider::before {
+            transform: translateX(-20px);
+        }
+
+        /* ============================================================
+           BUTTONS
+           ============================================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #6d28d9);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .btn-danger {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .btn-success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        /* FAB */
+        .fab {
+            position: fixed;
+            bottom: calc(var(--nav-height) + 20px);
+            left: 20px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #6d28d9);
+            color: #fff;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            cursor: pointer;
+            box-shadow: var(--shadow-lg);
+            z-index: 50;
+            transition: all 0.2s;
+        }
+
+        .fab:active {
+            transform: scale(0.93);
+        }
+
+        /* ============================================================
+           LIST ITEMS
+           ============================================================ */
+        .list-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+
+        .list-item:active {
+            transform: scale(0.99);
+        }
+
+        .list-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .list-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .list-item-title {
+            font-size: 14px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .list-item-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .list-item-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        /* ============================================================
+           BOTTOM NAVIGATION
+           ============================================================ */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--nav-height);
+            background: linear-gradient(to top, var(--bg-primary) 60%, rgba(15, 23, 42, 0.95));
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            z-index: 200;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .nav-item.active {
+            color: var(--accent);
+        }
+
+        .nav-item-icon {
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .nav-item-label {
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .nav-item.active .nav-item-icon {
+            transform: scale(1.1);
+        }
+
+        /* ============================================================
+           MODAL
+           ============================================================ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 300;
+            align-items: flex-end;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            width: 100%;
+            max-width: 480px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 24px 20px;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .modal-handle {
+            width: 40px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 4px;
+            margin: 0 auto 16px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-close {
+            margin-right: auto;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        /* ============================================================
+           FORM ELEMENTS
+           ============================================================ */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+
+        .form-input::placeholder,
+        .form-textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-select {
+            cursor: pointer;
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ============================================================
+           EMPTY STATE
+           ============================================================ */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.6;
+        }
+
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .empty-state-desc {
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        /* ============================================================
+           LOADING
+           ============================================================ */
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ============================================================
+           TOAST
+           ============================================================ */
+        .toast-container {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: var(--shadow-lg);
+            animation: toastIn 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .toast.success { border-color: var(--success); }
+        .toast.error { border-color: var(--danger); }
+        .toast.warning { border-color: var(--warning); }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(-16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes toastOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-16px); }
+        }
+
+        /* ============================================================
+           POST ITEM (Home)
+           ============================================================ */
+        .post-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .post-item-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        .post-item-status.sent { background: var(--success); box-shadow: 0 0 6px var(--success); }
+        .post-item-status.failed { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+        .post-item-status.pending { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+
+        .post-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .post-item-text {
+            font-size: 13px;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .post-item-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            display: flex;
+            gap: 8px;
+        }
+
+        /* ============================================================
+           SETTINGS
+           ============================================================ */
+        .settings-group {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .settings-group-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 12px 16px 4px;
+        }
+
+        .settings-item {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-item:last-child {
+            border-bottom: none;
+        }
+
+        .settings-item-label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .settings-item-value {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================================
+           LIMIT BAR
+           ============================================================ */
+        .limit-bar {
+            height: 6px;
+            background: var(--bg-input);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        .limit-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .limit-bar-fill.accent { background: var(--accent); }
+        .limit-bar-fill.success { background: var(--success); }
+        .limit-bar-fill.warning { background: var(--warning); }
+        .limit-bar-fill.danger { background: var(--danger); }
+
+        .limit-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ============================================================
+           CONFIRM DIALOG
+           ============================================================ */
+        .confirm-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 400;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .confirm-overlay.active {
+            display: flex;
+        }
+
+        .confirm-box {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 24px;
+            width: calc(100% - 40px);
+            max-width: 340px;
+            text-align: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .confirm-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        .confirm-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .confirm-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .confirm-actions .btn {
+            flex: 1;
+        }
+
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (min-width: 480px) {
+            body {
+                max-width: 480px;
+                margin: 0 auto;
+            }
+
+            .bottom-nav {
+                max-width: 480px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+
+            .fab {
+                left: calc(50% - 220px);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ========== HEADER ========== -->
+    <header class="header">
+        <div class="header-brand">
+            <div class="header-logo">⚡</div>
+            <span class="header-title">Cortex Post</span>
+        </div>
+        <div class="header-actions">
+            <button class="header-btn" onclick="refreshCurrentSection()" title="تحديث">🔄</button>
+        </div>
+    </header>
+
+    <!-- ========== TOAST CONTAINER ========== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ========== HOME SECTION ========== -->
+    <section id="home-section" class="section active">
+        <div class="section-title">🏠 الرئيسية</div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card accent" onclick="switchSection('channels')">
+                <span class="stat-icon">📡</span>
+                <span class="stat-value" id="stat-channels">-</span>
+                <span class="stat-label">القنوات</span>
+            </div>
+            <div class="stat-card success" onclick="switchSection('rules')">
+                <span class="stat-icon">⚙️</span>
+                <span class="stat-value" id="stat-rules">-</span>
+                <span class="stat-label">القواعد</span>
+            </div>
+            <div class="stat-card warning">
+                <span class="stat-icon">📝</span>
+                <span class="stat-value" id="stat-posts-today">-</span>
+                <span class="stat-label">منشورات اليوم</span>
+            </div>
+            <div class="stat-card info">
+                <span class="stat-icon">✅</span>
+                <span class="stat-value" id="stat-success-rate">-</span>
+                <span class="stat-label">نسبة النجاح</span>
+            </div>
+        </div>
+
+        <!-- Recent Posts -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:16px;font-weight:700;">📋 آخر المنشورات</span>
+            <button class="btn btn-sm btn-secondary" onclick="loadPosts()">تحديث</button>
+        </div>
+        <div id="recent-posts-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">جاري تحميل المنشورات...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== CHANNELS SECTION ========== -->
+    <section id="channels-section" class="section">
+        <div class="section-title">📡 القنوات</div>
+        <div id="channels-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">جاري تحميل القنوات...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== RULES SECTION ========== -->
+    <section id="rules-section" class="section">
+        <div class="section-title">⚙️ القواعد</div>
+        <div id="rules-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">جاري تحميل القواعد...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== PROVIDERS SECTION ========== -->
+    <section id="providers-section" class="section">
+        <div class="section-title">🔌 المصادر</div>
+        <div id="providers-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">جاري تحميل المصادر...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== SETTINGS SECTION ========== -->
+    <section id="settings-section" class="section">
+        <div class="section-title">⚙️ الإعدادات</div>
+        <div id="settings-content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">جاري تحميل الإعدادات...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== FAB (Add Button) ========== -->
+    <button class="fab" id="fab-btn" onclick="handleFabClick()" style="display:none;">+</button>
+
+    <!-- ========== BOTTOM NAV ========== -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-section="home" onclick="switchSection('home')">
+            <span class="nav-item-icon">🏠</span>
+            <span class="nav-item-label">الرئيسية</span>
+        </button>
+        <button class="nav-item" data-section="channels" onclick="switchSection('channels')">
+            <span class="nav-item-icon">📡</span>
+            <span class="nav-item-label">القنوات</span>
+        </button>
+        <button class="nav-item" data-section="rules" onclick="switchSection('rules')">
+            <span class="nav-item-icon">⚙️</span>
+            <span class="nav-item-label">القواعد</span>
+        </button>
+        <button class="nav-item" data-section="providers" onclick="switchSection('providers')">
+            <span class="nav-item-icon">🔌</span>
+            <span class="nav-item-label">المصادر</span>
+        </button>
+        <button class="nav-item" data-section="settings" onclick="switchSection('settings')">
+            <span class="nav-item-icon">⚙️</span>
+            <span class="nav-item-label">الإعدادات</span>
+        </button>
+    </nav>
+
+    <!-- ========== MODAL ========== -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModalOnOverlay(event)">
+        <div class="modal" id="modal">
+            <div class="modal-handle"></div>
+            <div class="modal-title" id="modalTitle">
+                <button class="modal-close" onclick="closeModal()">✕</button>
+                <span id="modalTitleText">عنوان</span>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- ========== CONFIRM DIALOG ========== -->
+    <div class="confirm-overlay" id="confirmOverlay">
+        <div class="confirm-box">
+            <div class="confirm-icon" id="confirmIcon">⚠️</div>
+            <div class="confirm-title" id="confirmTitle">تأكيد</div>
+            <div class="confirm-desc" id="confirmDesc">هل أنت متأكد؟</div>
+            <div class="confirm-actions">
+                <button class="btn btn-secondary" onclick="closeConfirm()">إلغاء</button>
+                <button class="btn btn-danger" id="confirmAction" onclick="executeConfirm()">تأكيد</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== JAVASCRIPT ========== -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ============================================================
+        // STATE
+        // ============================================================
+        let currentSection = 'home';
+        let channels = [];
+        let rules = [];
+        let providers = [];
+        let posts = [];
+        let limits = {};
+        let userInfo = {};
+        let providerTypes = [];
+        let confirmCallback = null;
+
+        // ============================================================
+        // TELEGRAM WEBAPP INIT
+        // ============================================================
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            tg.setHeaderColor('#0f172a');
+            tg.setBackgroundColor('#0f172a');
+        }
+
+        // ============================================================
+        // API HELPER
+        // ============================================================
+        function getBaseUrl() {
+            // In Telegram Mini App, same origin serves the API
+            return window.location.origin;
+        }
+
+        function getHeaders() {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            // Send Telegram initData for authentication
+            if (tg && tg.initData) {
+                headers['X-Telegram-Init-Data'] = tg.initData;
+            }
+            return headers;
+        }
+
+        async function api(method, path, body = null) {
+            const opts = {
+                method,
+                headers: getHeaders(),
+            };
+            if (body && method !== 'GET') {
+                opts.body = JSON.stringify(body);
+            }
+            try {
+                const res = await fetch(getBaseUrl() + '/api' + path, opts);
+                if (res.status === 401) {
+                    showToast('غير مصرح - يرجى فتح التطبيق من تيليجرام', 'error');
+                    throw new Error('Unauthorized');
+                }
+                if (res.status === 403) {
+                    const data = await res.json();
+                    showToast(data.detail || 'تم بلوغ الحد الأقصى - قم بالترقية', 'warning');
+                    throw new Error(data.detail || 'Forbidden');
+                }
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || `HTTP ${res.status}`);
+                }
+                return await res.json();
+            } catch (err) {
+                if (err.message !== 'Unauthorized' && !err.message.includes('Forbidden')) {
+                    showToast('خطأ: ' + err.message, 'error');
+                }
+                throw err;
+            }
+        }
+
+        // ============================================================
+        // TOAST
+        // ============================================================
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toastOut 0.3s ease forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ============================================================
+        // SECTION SWITCHING
+        // ============================================================
+        window.switchSection = function(section) {
+            currentSection = section;
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            // Show target
+            const target = document.getElementById(section + '-section');
+            if (target) target.classList.add('active');
+            // Update nav
+            document.querySelectorAll('.nav-item').forEach(n => {
+                n.classList.toggle('active', n.dataset.section === section);
+            });
+            // Show/hide FAB
+            const fabBtn = document.getElementById('fab-btn');
+            const showFab = ['channels', 'rules', 'providers'].includes(section);
+            fabBtn.style.display = showFab ? 'flex' : 'none';
+            // Load data
+            loadSectionData(section);
+        };
+
+        function loadSectionData(section) {
+            switch(section) {
+                case 'home': loadHomeData(); break;
+                case 'channels': loadChannels(); break;
+                case 'rules': loadRules(); break;
+                case 'providers': loadProviders(); break;
+                case 'settings': loadSettings(); break;
+            }
+        }
+
+        window.refreshCurrentSection = function() {
+            loadSectionData(currentSection);
+        };
+
+        // ============================================================
+        // HOME
+        // ============================================================
+        async function loadHomeData() {
+            await Promise.allSettled([
+                loadStats(),
+                loadPosts(),
+            ]);
+        }
+
+        async function loadStats() {
+            try {
+                const [channelsData, rulesData, statsData] = await Promise.allSettled([
+                    api('GET', '/channels'),
+                    api('GET', '/rules'),
+                    api('GET', '/posts/stats'),
+                ]);
+
+                if (channelsData.status === 'fulfilled') {
+                    channels = channelsData.value;
+                    document.getElementById('stat-channels').textContent = channels.length;
+                }
+
+                if (rulesData.status === 'fulfilled') {
+                    rules = rulesData.value;
+                    document.getElementById('stat-rules').textContent = rules.length;
+                }
+
+                if (statsData.status === 'fulfilled') {
+                    const s = statsData.value;
+                    document.getElementById('stat-posts-today').textContent = s.sent || 0;
+                    document.getElementById('stat-success-rate').textContent = s.success_rate + '%';
+                }
+            } catch(e) {
+                // handled in api()
+            }
+        }
+
+        async function loadPosts() {
+            const container = document.getElementById('recent-posts-list');
+            try {
+                posts = await api('GET', '/posts?limit=15');
+                if (!posts.length) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <div class="empty-state-title">لا توجد منشورات بعد</div>
+                            <div class="empty-state-desc">ستظهر المنشورات هنا بمجرد تنشيط القواعد</div>
+                        </div>`;
+                    return;
+                }
+                container.innerHTML = posts.map(p => `
+                    <div class="post-item">
+                        <div class="post-item-status ${p.status}"></div>
+                        <div class="post-item-content">
+                            <div class="post-item-text">${escapeHtml(p.content || '(بدون محتوى)')}</div>
+                            <div class="post-item-meta">
+                                <span>${p.provider_type}</span>
+                                <span>•</span>
+                                <span>${p.platform}</span>
+                                <span>•</span>
+                                <span>${formatDate(p.created_at)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-title">خطأ في التحميل</div>
+                        <div class="empty-state-desc">تعذر تحميل المنشورات</div>
+                        <button class="btn btn-sm btn-primary" onclick="loadPosts()">إعادة المحاولة</button>
+                    </div>`;
+            }
+        }
+
+        // ============================================================
+        // CHANNELS
+        // ============================================================
+        async function loadChannels() {
+            const container = document.getElementById('channels-list');
+            try {
+                channels = await api('GET', '/channels');
+                if (!channels.length) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📡</div>
+                            <div class="empty-state-title">لا توجد قنوات</div>
+                            <div class="empty-state-desc">أضف قناة تيليجرام لنشر المحتوى فيها</div>
+                            <button class="btn btn-primary" onclick="showAddChannelModal()">+ إضافة قناة</button>
+                        </div>`;
+                    return;
+                }
+                container.innerHTML = channels.map(ch => `
+                    <div class="list-item">
+                        <div class="list-item-icon" style="background:var(--accent-light);">
+                            ${ch.channel_type === 'channel' ? '📢' : '💬'}
+                        </div>
+                        <div class="list-item-content">
+                            <div class="list-item-title">${escapeHtml(ch.channel_title)}</div>
+                            <div class="list-item-desc">
+                                ${ch.channel_username ? '@' + ch.channel_username : 'ID: ' + ch.channel_telegram_id}
+                                ${ch.is_active ? '' : ' • معطلة'}
+                            </div>
+                        </div>
+                        <div class="list-item-actions">
+                            <span class="badge ${ch.is_active ? 'badge-success' : 'badge-danger'}">
+                                ${ch.is_active ? 'نشطة' : 'معطلة'}
+                            </span>
+                            <button class="btn-icon" onclick="confirmDeleteChannel(${ch.id}, '${escapeAttr(ch.channel_title)}')" title="حذف">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) {
+                container.innerHTML = renderErrorState('القنوات', loadChannels);
+            }
+        }
+
+        window.showAddChannelModal = function() {
+            openModal('إضافة قناة جديدة', `
+                <form id="addChannelForm" onsubmit="submitAddChannel(event)">
+                    <div class="form-group">
+                        <label class="form-label">معرف القناة في تيليجرام *</label>
+                        <input class="form-input" type="number" name="channel_telegram_id" placeholder="-1001234567890" required>
+                        <div class="form-hint">أضف البوت كمسؤول في القناة أولاً</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">اسم القناة *</label>
+                        <input class="form-input" type="text" name="channel_title" placeholder="اسم القناة" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">معرف القناة (اختياري)</label>
+                        <input class="form-input" type="text" name="channel_username" placeholder="channel_name" dir="ltr">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">نوع القناة</label>
+                        <select class="form-select" name="channel_type">
+                            <option value="channel">قناة Channel</option>
+                            <option value="group">مجموعة Group</option>
+                            <option value="supergroup">مجموعة خارقة Supergroup</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary btn-full" type="submit">إضافة القناة</button>
+                </form>
+            `);
+        };
+
+        window.submitAddChannel = async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const body = {
+                channel_telegram_id: parseInt(form.channel_telegram_id.value),
+                channel_title: form.channel_title.value,
+                channel_username: form.channel_username.value || null,
+                channel_type: form.channel_type.value,
+            };
+            try {
+                await api('POST', '/channels', body);
+                showToast('تمت إضافة القناة بنجاح ✨');
+                closeModal();
+                loadChannels();
+            } catch(e) { /* handled */ }
+        };
+
+        window.confirmDeleteChannel = function(id, name) {
+            showConfirm('🗑️', 'حذف القناة', `هل تريد حذف "${name}"؟ لا يمكن التراجع.`, async () => {
+                try {
+                    await api('DELETE', `/channels/${id}`);
+                    showToast('تم حذف القناة');
+                    loadChannels();
+                } catch(e) { /* handled */ }
+            });
+        };
+
+        // ============================================================
+        // RULES
+        // ============================================================
+        async function loadRules() {
+            const container = document.getElementById('rules-list');
+            try {
+                // Load rules + dependencies for the add form
+                const [rulesData, channelsData, providersData] = await Promise.allSettled([
+                    api('GET', '/rules'),
+                    api('GET', '/channels'),
+                    api('GET', '/providers'),
+                ]);
+                if (rulesData.status === 'fulfilled') rules = rulesData.value;
+                if (channelsData.status === 'fulfilled') channels = channelsData.value;
+                if (providersData.status === 'fulfilled') providers = providersData.value;
+
+                if (!rules.length) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚙️</div>
+                            <div class="empty-state-title">لا توجد قواعد</div>
+                            <div class="empty-state-desc">أنشئ قاعدة لربط المصدر بالقالب والقناة</div>
+                            <button class="btn btn-primary" onclick="showAddRuleModal()">+ إنشاء قاعدة</button>
+                        </div>`;
+                    return;
+                }
+                container.innerHTML = rules.map(r => {
+                    const channel = channels.find(c => c.id === r.provider_id) || {};
+                    const badgeClass = r.is_active ? 'badge-success' : 'badge-danger';
+                    const statusText = r.is_active ? 'نشطة' : 'معطلة';
+                    return `
+                    <div class="list-item">
+                        <div class="list-item-icon" style="background:var(--success-light);">📋</div>
+                        <div class="list-item-content">
+                            <div class="list-item-title">${escapeHtml(r.name)}</div>
+                            <div class="list-item-desc">
+                                أولوية: ${r.priority} • فترة التبريد: ${r.cooldown_minutes} د
+                                ${r.last_triggered_at ? ' • آخر تشغيل: ' + formatDate(r.last_triggered_at) : ''}
+                            </div>
+                        </div>
+                        <div class="list-item-actions">
+                            <label class="toggle">
+                                <input type="checkbox" ${r.is_active ? 'checked' : ''} onchange="toggleRule(${r.id}, this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <button class="btn-icon" onclick="confirmDeleteRule(${r.id}, '${escapeAttr(r.name)}')" title="حذف">🗑️</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) {
+                container.innerHTML = renderErrorState('القواعد', loadRules);
+            }
+        }
+
+        window.toggleRule = async function(ruleId, isActive) {
+            try {
+                await api('PATCH', `/rules/${ruleId}`, { is_active: isActive });
+                showToast(isActive ? 'تم تفعيل القاعدة ✅' : 'تم تعطيل القاعدة ⏸️');
+            } catch(e) {
+                // Revert toggle on error
+                loadRules();
+            }
+        };
+
+        window.showAddRuleModal = async function() {
+            // Ensure we have channels and providers for the dropdowns
+            try {
+                if (!channels.length) channels = await api('GET', '/channels');
+                if (!providers.length) providers = await api('GET', '/providers');
+                const templates = await api('GET', '/templates');
+            } catch(e) { return; }
+
+            if (!channels.length) {
+                showToast('أضف قناة أولاً', 'warning');
+                return;
+            }
+            if (!providers.length) {
+                showToast('أضف مصدر بيانات أولاً', 'warning');
+                return;
+            }
+
+            const templates = await api('GET', '/templates').catch(() => []);
+            if (!templates.length) {
+                showToast('أضف قالب رسالة أولاً', 'warning');
+                return;
+            }
+
+            openModal('إنشاء قاعدة جديدة', `
+                <form id="addRuleForm" onsubmit="submitAddRule(event)">
+                    <div class="form-group">
+                        <label class="form-label">اسم القاعدة *</label>
+                        <input class="form-input" type="text" name="name" placeholder="مثال: نشر أسعار البيتكوين" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">المصدر *</label>
+                        <select class="form-select" name="provider_id" required>
+                            <option value="">اختر المصدر</option>
+                            ${providers.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${p.provider_type})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">القالب *</label>
+                        <select class="form-select" name="template_id" required>
+                            <option value="">اختر القالب</option>
+                            ${templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.provider_type})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">القناة *</label>
+                        <select class="form-select" name="channel_id" required>
+                            <option value="">اختر القناة</option>
+                            ${channels.map(c => `<option value="${c.id}">${escapeHtml(c.channel_title)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">منطق الشروط</label>
+                        <select class="form-select" name="condition_logic">
+                            <option value="AND">الكل (AND)</option>
+                            <option value="OR">أي واحد (OR)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">فترة التبريد (بالدقائق)</label>
+                        <input class="form-input" type="number" name="cooldown_minutes" value="30" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الأولوية</label>
+                        <input class="form-input" type="number" name="priority" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle" style="display:inline-flex;vertical-align:middle;">
+                            <input type="checkbox" name="is_active" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span style="margin-right:8px;font-size:14px;">تفعيل القاعدة مباشرة</span>
+                    </div>
+                    <button class="btn btn-primary btn-full" type="submit">إنشاء القاعدة</button>
+                </form>
+            `);
+        };
+
+        window.submitAddRule = async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const body = {
+                name: form.name.value,
+                provider_id: parseInt(form.provider_id.value),
+                template_id: parseInt(form.template_id.value),
+                channel_id: parseInt(form.channel_id.value),
+                conditions: [],
+                condition_logic: form.condition_logic.value,
+                is_active: form.is_active.checked,
+                cooldown_minutes: parseInt(form.cooldown_minutes.value) || 30,
+                priority: parseInt(form.priority.value) || 0,
+            };
+            try {
+                await api('POST', '/rules', body);
+                showToast('تم إنشاء القاعدة بنجاح 🎉');
+                closeModal();
+                loadRules();
+            } catch(e) { /* handled */ }
+        };
+
+        window.confirmDeleteRule = function(id, name) {
+            showConfirm('🗑️', 'حذف القاعدة', `هل تريد حذف "${name}"؟ لا يمكن التراجع.`, async () => {
+                try {
+                    await api('DELETE', `/rules/${id}`);
+                    showToast('تم حذف القاعدة');
+                    loadRules();
+                } catch(e) { /* handled */ }
+            });
+        };
+
+        // ============================================================
+        // PROVIDERS
+        // ============================================================
+        async function loadProviders() {
+            const container = document.getElementById('providers-list');
+            try {
+                const [providersData, typesData] = await Promise.allSettled([
+                    api('GET', '/providers'),
+                    api('GET', '/providers/types'),
+                ]);
+                if (providersData.status === 'fulfilled') providers = providersData.value;
+                if (typesData.status === 'fulfilled') providerTypes = typesData.value.types || [];
+
+                if (!providers.length) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔌</div>
+                            <div class="empty-state-title">لا توجد مصادر</div>
+                            <div class="empty-state-desc">أضف مصدر بيانات للحصول على المحتوى تلقائياً</div>
+                            <button class="btn btn-primary" onclick="showAddProviderModal()">+ إضافة مصدر</button>
+                        </div>`;
+                    return;
+                }
+                container.innerHTML = providers.map(p => `
+                    <div class="list-item">
+                        <div class="list-item-icon" style="background:var(--${getProviderBadgeStyle(p.provider_type)});">
+                            ${getProviderEmoji(p.provider_type)}
+                        </div>
+                        <div class="list-item-content">
+                            <div class="list-item-title">${escapeHtml(p.name)}</div>
+                            <div class="list-item-desc">
+                                <span class="badge badge-${p.provider_type}" style="font-size:11px;padding:1px 8px;">
+                                    ${getProviderLabel(p.provider_type)}
+                                </span>
+                                ${p.last_fetched_at ? ' • آخر جلب: ' + formatDate(p.last_fetched_at) : ''}
+                            </div>
+                        </div>
+                        <div class="list-item-actions">
+                            <span class="badge ${p.is_active ? 'badge-success' : 'badge-danger'}">
+                                ${p.is_active ? 'نشط' : 'معطل'}
+                            </span>
+                            <button class="btn-icon" onclick="testProvider(${p.id})" title="اختبار">🧪</button>
+                            <button class="btn-icon" onclick="confirmDeleteProvider(${p.id}, '${escapeAttr(p.name)}')" title="حذف">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) {
+                container.innerHTML = renderErrorState('المصادر', loadProviders);
+            }
+        }
+
+        function getProviderEmoji(type) {
+            const map = {
+                crypto: '₿', rss: '📰', sports: '⚽',
+                weather: '🌤️', religious: '🕌', webhook: '🔗',
+            };
+            return map[type] || '🔌';
+        }
+
+        function getProviderLabel(type) {
+            const map = {
+                crypto: 'عملات رقمية', rss: 'RSS', sports: 'رياضة',
+                weather: 'طقس', religious: 'أوقات الصلاة', webhook: 'Webhook',
+            };
+            return map[type] || type;
+        }
+
+        function getProviderBadgeStyle(type) {
+            const map = {
+                crypto: 'warning-light', rss: 'warning-light', sports: 'success-light',
+                weather: 'info-light', religious: 'accent-light', webhook: 'danger-light',
+            };
+            return map[type] || 'accent-light';
+        }
+
+        window.showAddProviderModal = function() {
+            const typeOptions = providerTypes.length
+                ? providerTypes.map(t => `<option value="${t}">${getProviderEmoji(t)} ${getProviderLabel(t)}</option>`).join('')
+                : `<option value="crypto">₿ عملات رقمية</option>
+                   <option value="rss">📰 RSS</option>
+                   <option value="sports">⚽ رياضة</option>
+                   <option value="weather">🌤️ طقس</option>
+                   <option value="religious">🕌 أوقات الصلاة</option>
+                   <option value="webhook">🔗 Webhook</option>`;
+
+            openModal('إضافة مصدر جديد', `
+                <form id="addProviderForm" onsubmit="submitAddProvider(event)">
+                    <div class="form-group">
+                        <label class="form-label">اسم المصدر *</label>
+                        <input class="form-input" type="text" name="name" placeholder="مثال: أسعار العملات" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">نوع المصدر *</label>
+                        <select class="form-select" name="provider_type" required onchange="updateProviderConfigFields(this.value)">
+                            <option value="">اختر النوع</option>
+                            ${typeOptions}
+                        </select>
+                    </div>
+                    <div id="providerConfigFields">
+                        <div class="form-group">
+                            <label class="form-label">الإعدادات</label>
+                            <div class="form-hint">اختر نوع المصدر أولاً لعرض الإعدادات المطلوبة</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle" style="display:inline-flex;vertical-align:middle;">
+                            <input type="checkbox" name="is_active" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span style="margin-right:8px;font-size:14px;">تفعيل المصدر</span>
+                    </div>
+                    <button class="btn btn-primary btn-full" type="submit">إضافة المصدر</button>
+                </form>
+            `);
+        };
+
+        window.updateProviderConfigFields = function(type) {
+            const container = document.getElementById('providerConfigFields');
+            const configs = {
+                crypto: `
+                    <div class="form-group">
+                        <label class="form-label">العملات</label>
+                        <input class="form-input" type="text" name="coins" placeholder="bitcoin,ethereum,solana" dir="ltr">
+                        <div class="form-hint">أدخل معرفات العملات مفصولة بفواصل (من CoinGecko)</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">العملة المقابلة</label>
+                        <select class="form-select" name="vs_currency">
+                            <option value="usd">USD</option>
+                            <option value="eur">EUR</option>
+                            <option value="sar">SAR</option>
+                            <option value="aed">AED</option>
+                        </select>
+                    </div>`,
+                rss: `
+                    <div class="form-group">
+                        <label class="form-label">رابط RSS *</label>
+                        <input class="form-input" type="url" name="feed_url" placeholder="https://example.com/feed.xml" dir="ltr" required>
+                    </div>`,
+                sports: `
+                    <div class="form-group">
+                        <label class="form-label">الدوري</label>
+                        <select class="form-select" name="league">
+                            <option value="PL">الدوري الإنجليزي</option>
+                            <option value="PD">الدوري الإسباني</option>
+                            <option value="BL1">الدوري الألماني</option>
+                            <option value="SA">الدوري الإيطالي</option>
+                            <option value="FL1">الدوري الفرنسي</option>
+                            <option value="CL">دوري أبطال أوروبا</option>
+                        </select>
+                    </div>`,
+                weather: `
+                    <div class="form-group">
+                        <label class="form-label">المدينة *</label>
+                        <input class="form-input" type="text" name="city" placeholder="القاهرة">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">رمز الدولة</label>
+                        <input class="form-input" type="text" name="country_code" placeholder="EG" dir="ltr" maxlength="2">
+                    </div>`,
+                religious: `
+                    <div class="form-group">
+                        <label class="form-label">المدينة *</label>
+                        <input class="form-input" type="text" name="city" placeholder="القاهرة">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الدولة</label>
+                        <input class="form-input" type="text" name="country" placeholder="Egypt">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الطريقة</label>
+                        <select class="form-select" name="method">
+                            <option value="5">الهيئة المصرية</option>
+                            <option value="4">أم القرى</option>
+                            <option value="2">رابطة العالم الإسلامي</option>
+                            <option value="1">الجامعة الإسلامية</option>
+                            <option value="3">أمريكا الشمالية</option>
+                        </select>
+                    </div>`,
+                webhook: `
+                    <div class="form-group">
+                        <label class="form-label">رابط الـ Webhook *</label>
+                        <input class="form-input" type="url" name="url" placeholder="https://your-server.com/webhook" dir="ltr" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">السر (اختياري)</label>
+                        <input class="form-input" type="text" name="secret" placeholder="webhook_secret" dir="ltr">
+                        <div class="form-hint">🔒 ميزة مميزة - تتطلب اشتراك Premium</div>
+                    </div>`,
+            };
+            container.innerHTML = configs[type] || `
+                <div class="form-group">
+                    <label class="form-label">إعدادات إضافية (JSON)</label>
+                    <textarea class="form-textarea" name="config_json" placeholder='{"key": "value"}' dir="ltr"></textarea>
+                </div>`;
+        };
+
+        window.submitAddProvider = async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const type = form.provider_type.value;
+            const config = buildProviderConfig(type, form);
+
+            const body = {
+                provider_type: type,
+                name: form.name.value,
+                config: config,
+                is_active: form.is_active.checked,
+            };
+            try {
+                await api('POST', '/providers', body);
+                showToast('تم إضافة المصدر بنجاح 🎉');
+                closeModal();
+                loadProviders();
+            } catch(e) { /* handled */ }
+        };
+
+        function buildProviderConfig(type, form) {
+            switch(type) {
+                case 'crypto':
+                    return {
+                        coins: (form.coins?.value || 'bitcoin').split(',').map(s => s.trim()).filter(Boolean),
+                        vs_currency: form.vs_currency?.value || 'usd',
+                    };
+                case 'rss':
+                    return { feed_url: form.feed_url?.value || '' };
+                case 'sports':
+                    return { league: form.league?.value || 'PL' };
+                case 'weather':
+                    return {
+                        city: form.city?.value || 'القاهرة',
+                        country_code: form.country_code?.value || '',
+                    };
+                case 'religious':
+                    return {
+                        city: form.city?.value || 'القاهرة',
+                        country: form.country?.value || 'Egypt',
+                        method: parseInt(form.method?.value) || 5,
+                    };
+                case 'webhook':
+                    return {
+                        url: form.url?.value || '',
+                        secret: form.secret?.value || '',
+                    };
+                default:
+                    try {
+                        return JSON.parse(form.config_json?.value || '{}');
+                    } catch {
+                        return {};
+                    }
+            }
+        }
+
+        window.testProvider = async function(id) {
+            showToast('جاري اختبار المصدر...', 'info');
+            try {
+                const result = await api('POST', `/providers/${id}/test`);
+                if (result.status === 'success') {
+                    showToast('نجح الاختبار! المصدر يعمل ✅', 'success');
+                } else {
+                    showToast('فشل الاختبار: ' + (result.error || 'خطأ غير معروف'), 'error');
+                }
+            } catch(e) { /* handled */ }
+        };
+
+        window.confirmDeleteProvider = function(id, name) {
+            showConfirm('🗑️', 'حذف المصدر', `هل تريد حذف "${name}"؟ سيتم حذف القواعد المرتبطة أيضاً.`, async () => {
+                try {
+                    await api('DELETE', `/providers/${id}`);
+                    showToast('تم حذف المصدر');
+                    loadProviders();
+                } catch(e) { /* handled */ }
+            });
+        };
+
+        // ============================================================
+        // SETTINGS
+        // ============================================================
+        async function loadSettings() {
+            const container = document.getElementById('settings-content');
+            try {
+                const [limitsData, subData] = await Promise.allSettled([
+                    api('GET', '/subscription/limits'),
+                    api('GET', '/subscription/info'),
+                ]);
+
+                if (limitsData.status === 'fulfilled') limits = limitsData.value;
+                if (subData.status === 'fulfilled') userInfo = subData.value;
+
+                const tier = limits.tier || userInfo.tier || 'free';
+                const isPremium = tier === 'premium';
+
+                container.innerHTML = `
+                    <!-- User Info -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">👤 معلومات الحساب</div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">معرف تيليجرام</span>
+                            <span class="settings-item-value" dir="ltr">${userInfo.telegram_id || '-'}</span>
+                        </div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">نوع الاشتراك</span>
+                            <span class="badge ${isPremium ? 'badge-accent' : 'badge-info'}">
+                                ${isPremium ? '⭐ مميز Premium' : '🆓 مجاني Free'}
+                            </span>
+                        </div>
+                        ${isPremium && userInfo.premium_expires_at ? `
+                        <div class="settings-item">
+                            <span class="settings-item-label">تاريخ انتهاء الاشتراك</span>
+                            <span class="settings-item-value">${formatDate(userInfo.premium_expires_at)}</span>
+                        </div>` : ''}
+                    </div>
+
+                    <!-- Usage Limits -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">📊 حدود الاستخدام</div>
+                        ${renderLimitItem('القنوات', limits.channels)}
+                        ${renderLimitItem('القواعد', limits.rules)}
+                        ${renderLimitItem('القوالب', limits.templates)}
+                    </div>
+
+                    <!-- Premium Features -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">⭐ الميزات المميزة</div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">نشر تويتر</span>
+                            <span class="badge ${limits.twitter_available ? 'badge-success' : 'badge-danger'}">
+                                ${limits.twitter_available ? '✅ متاح' : '🔒 Premium'}
+                            </span>
+                        </div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">Webhook</span>
+                            <span class="badge ${limits.webhook_available ? 'badge-success' : 'badge-danger'}">
+                                ${limits.webhook_available ? '✅ متاح' : '🔒 Premium'}
+                            </span>
+                        </div>
+                    </div>
+
+                    ${!isPremium ? `
+                    <!-- Upgrade Card -->
+                    <div class="card" style="background:linear-gradient(135deg, rgba(139,92,246,0.15), rgba(109,40,217,0.1));border-color:var(--accent);text-align:center;padding:24px 16px;">
+                        <div style="font-size:40px;margin-bottom:8px;">⭐</div>
+                        <div style="font-size:18px;font-weight:700;margin-bottom:6px;">ترقية إلى Premium</div>
+                        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+                            قنوات غير محدودة • قواعد غير محدودة • نشر تويتر • Webhook
+                        </div>
+                        <button class="btn btn-primary" onclick="requestUpgrade()">طلب الترقية</button>
+                    </div>` : ''}
+
+                    <!-- About -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">ℹ️ حول التطبيق</div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">الإصدار</span>
+                            <span class="settings-item-value" dir="ltr">1.0.0</span>
+                        </div>
+                        <div class="settings-item">
+                            <span class="settings-item-label">المنصة</span>
+                            <span class="settings-item-value">Telegram Mini App</span>
+                        </div>
+                    </div>
+                `;
+            } catch(e) {
+                container.innerHTML = renderErrorState('الإعدادات', loadSettings);
+            }
+        }
+
+        function renderLimitItem(label, data) {
+            if (!data) return '';
+            const used = data.used || 0;
+            const max = data.max || 0;
+            const isUnlimited = max >= 999;
+            const pct = isUnlimited ? 10 : Math.min((used / max) * 100, 100);
+            const colorClass = pct > 90 ? 'danger' : pct > 70 ? 'warning' : 'accent';
+
+            return `
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span class="settings-item-label">${label}</span>
+                        <span class="settings-item-value">${used} / ${isUnlimited ? '∞' : max}</span>
+                    </div>
+                    <div class="limit-bar">
+                        <div class="limit-bar-fill ${colorClass}" style="width:${pct}%"></div>
+                    </div>
+                </div>`;
+        }
+
+        window.requestUpgrade = function() {
+            if (tg) {
+                tg.sendData(JSON.stringify({ action: 'upgrade_request' }));
+                showToast('تم إرسال طلب الترقية ✨', 'success');
+            } else {
+                showToast('يرجى التواصل مع الدعم للترقية', 'info');
+            }
+        };
+
+        // ============================================================
+        // FAB CLICK HANDLER
+        // ============================================================
+        window.handleFabClick = function() {
+            switch(currentSection) {
+                case 'channels': showAddChannelModal(); break;
+                case 'rules': showAddRuleModal(); break;
+                case 'providers': showAddProviderModal(); break;
+            }
+        };
+
+        // ============================================================
+        // MODAL
+        // ============================================================
+        function openModal(title, bodyHtml) {
+            document.getElementById('modalTitleText').textContent = title;
+            document.getElementById('modalBody').innerHTML = bodyHtml;
+            document.getElementById('modalOverlay').classList.add('active');
+            if (tg) tg.BackButton.show();
+        }
+
+        window.closeModal = function() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (tg) tg.BackButton.hide();
+        };
+
+        window.closeModalOnOverlay = function(e) {
+            if (e.target === document.getElementById('modalOverlay')) {
+                closeModal();
+            }
+        };
+
+        // Handle Telegram back button
+        if (tg) {
+            tg.BackButton.onClick(() => {
+                closeModal();
+            });
+        }
+
+        // ============================================================
+        // CONFIRM DIALOG
+        // ============================================================
+        function showConfirm(icon, title, desc, callback) {
+            document.getElementById('confirmIcon').textContent = icon;
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmDesc').textContent = desc;
+            confirmCallback = callback;
+            document.getElementById('confirmOverlay').classList.add('active');
+        }
+
+        window.closeConfirm = function() {
+            document.getElementById('confirmOverlay').classList.remove('active');
+            confirmCallback = null;
+        };
+
+        window.executeConfirm = async function() {
+            if (confirmCallback) {
+                const cb = confirmCallback;
+                closeConfirm();
+                await cb();
+            }
+        };
+
+        // ============================================================
+        // HELPERS
+        // ============================================================
+        function escapeHtml(str) {
+            if (!str) return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return String(str).replace(/[&<>"']/g, c => map[c]);
+        }
+
+        function escapeAttr(str) {
+            return escapeHtml(str).replace(/'/g, "\\'");
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                const d = new Date(dateStr);
+                const now = new Date();
+                const diff = now - d;
+                const mins = Math.floor(diff / 60000);
+                const hours = Math.floor(diff / 3600000);
+                const days = Math.floor(diff / 86400000);
+
+                if (mins < 1) return 'الآن';
+                if (mins < 60) return `منذ ${mins} د`;
+                if (hours < 24) return `منذ ${hours} س`;
+                if (days < 7) return `منذ ${days} ي`;
+
+                return d.toLocaleDateString('ar-EG', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function renderErrorState(sectionName, retryFn) {
+            const fnName = retryFn.name || 'refreshCurrentSection';
+            return `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <div class="empty-state-title">خطأ في التحميل</div>
+                    <div class="empty-state-desc">تعذر تحميل بيانات ${sectionName}</div>
+                    <button class="btn btn-sm btn-primary" onclick="${fnName}()">إعادة المحاولة</button>
+                </div>`;
+        }
+
+        // ============================================================
+        // INIT
+        // ============================================================
+        async function init() {
+            // Show loading briefly, then load home data
+            await loadHomeData();
+        }
+
+        // Start the app
+        init();
+
+    })();
+    </script>
+</body>
+</html>
