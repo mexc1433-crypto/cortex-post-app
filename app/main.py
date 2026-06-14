@@ -4,6 +4,7 @@ Runs FastAPI web server + Telegram Bot (Webhook mode) + APScheduler together.
 Uses webhook mode for production on Railway - avoids polling conflicts.
 """
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -16,7 +17,7 @@ from aiogram.types import Update
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.config import settings
 from app.database.connection import db
@@ -95,7 +96,7 @@ async def init_bot():
             await bot.delete_webhook(drop_pending_updates=True)
             logger.info("Webhook deleted - using polling mode")
 
-        logger.info(f"Cortex Post bot initialized! 🧠 (mode: {'webhook' if settings.use_webhook else 'polling'})")
+        logger.info(f"Cortex Post bot initialized! (mode: {'webhook' if settings.use_webhook else 'polling'})")
 
     except Exception as e:
         logger.error(f"Bot initialization error: {e}")
@@ -118,7 +119,6 @@ async def init_database():
         logger.info("Database schema initialized")
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
-        # Try to continue - some features may not work
 
 
 async def init_scheduler():
@@ -145,7 +145,6 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup
-    # Cancel polling if running
     if _polling_task:
         _polling_task.cancel()
         try:
@@ -153,13 +152,11 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    # Stop scheduler
     try:
         await cortex_scheduler.stop()
     except Exception:
         pass
 
-    # Delete webhook and close bot
     if bot:
         try:
             if settings.use_webhook:
@@ -168,7 +165,6 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-    # Disconnect database
     try:
         await db.disconnect()
     except Exception:
@@ -229,11 +225,14 @@ if os.path.exists(static_path):
 
 @app.get("/")
 async def root():
-    """Root endpoint - serve Mini App."""
-    index_path = os.path.join(static_path, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"message": "Cortex Post API", "version": "1.0.0"}
+    """Root endpoint - simple JSON response for healthchecks."""
+    return JSONResponse(content={
+        "message": "Cortex Post API",
+        "version": "1.0.0",
+        "status": "running",
+        "bot": "configured" if bot else "not_configured",
+        "mode": "webhook" if settings.use_webhook else "polling",
+    })
 
 
 @app.get("/dashboard")
@@ -242,20 +241,20 @@ async def dashboard():
     index_path = os.path.join(static_path, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"message": "Dashboard not available"}
+    return JSONResponse(content={"message": "Dashboard not available"})
 
 
 @app.get("/health")
 async def health():
     """Health check endpoint - always returns 200 so Railway doesn't kill the deployment."""
-    return {
+    return JSONResponse(content={
         "status": "healthy",
         "database": "connected" if db.is_connected else "disconnected",
         "bot": "configured" if bot else "not_configured",
         "mode": "webhook" if settings.use_webhook else "polling",
         "startup_complete": _startup_complete,
         "startup_error": _startup_error,
-    }
+    })
 
 
 # Webhook endpoint for Telegram updates
@@ -264,10 +263,12 @@ async def telegram_webhook(request: Request):
     """
     Receive Telegram updates via webhook.
     This endpoint receives POST requests from Telegram servers.
+    Uses dp.feed_update() - the proper aiogram 3.x method for webhook processing.
     """
     global bot, dp
 
     if not settings.use_webhook:
+        logger.warning("Webhook received but webhook mode not enabled")
         return Response(status_code=403, content="Webhook mode not enabled")
 
     if not bot or not dp:
@@ -276,14 +277,25 @@ async def telegram_webhook(request: Request):
 
     try:
         body = await request.json()
-        update = Update(**body)
+        
+        # Log incoming update type for debugging
+        update_type = None
+        if "message" in body:
+            update_type = f"message from {body['message'].get('from', {}).get('id', '?')}"
+        elif "callback_query" in body:
+            update_type = f"callback from {body['callback_query'].get('from', {}).get('id', '?')}"
+        logger.info(f"Webhook update received: {update_type or list(body.keys())}")
+        
+        # Parse the update using model_validate (aiogram 3.x proper way)
+        update = Update.model_validate(body)
 
-        # Process the update through the dispatcher
-        await dp._process_update(bot, update)
+        # Process the update through the dispatcher using feed_update (public API)
+        # This is the correct method - NOT _process_update (which is internal)
+        await dp.feed_update(bot, update)
 
         return Response(status_code=200)
     except Exception as e:
-        logger.error(f"Webhook processing error: {e}")
+        logger.error(f"Webhook processing error: {e}", exc_info=True)
         return Response(status_code=200)  # Return 200 anyway to not retry
 
 
