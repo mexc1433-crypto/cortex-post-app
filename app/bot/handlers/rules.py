@@ -157,7 +157,7 @@ async def rule_provider_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.callback_query(RuleStates.waiting_for_channel, F.data.startswith("ch_") and ~F.data.endswith("add"))
+@router.callback_query(RuleStates.waiting_for_channel, F.data.startswith("ch_") & ~F.data.endswith("add"))
 async def rule_channel(callback: CallbackQuery, state: FSMContext):
     """Save channel selection and ask for conditions."""
     channel_id = int(callback.data.split("_")[1])
@@ -240,7 +240,7 @@ async def rule_cooldown(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("rule_") and not F.data.startswith("rule_add"))
+@router.callback_query(F.data.startswith("rule_") & ~F.data.startswith("rule_add"))
 async def rule_detail(callback: CallbackQuery):
     """Show rule detail."""
     parts = callback.data.split("_")

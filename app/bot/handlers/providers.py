@@ -160,7 +160,7 @@ async def provider_config(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("prov_") and not F.data.startswith("prov_add") and not F.data.startswith("prov_type_"))
+@router.callback_query(F.data.startswith("prov_") & ~F.data.startswith("prov_add") & ~F.data.startswith("prov_type_"))
 async def provider_detail(callback: CallbackQuery):
     """Show provider detail."""
     provider_id = int(callback.data.split("_")[1])

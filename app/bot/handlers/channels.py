@@ -112,7 +112,7 @@ async def process_channel_add(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("ch_") and F.data != "ch_add")
+@router.callback_query(F.data.startswith("ch_") & (F.data != "ch_add"))
 async def channel_detail(callback: CallbackQuery):
     """Show channel detail."""
     channel_id = int(callback.data.split("_")[1])

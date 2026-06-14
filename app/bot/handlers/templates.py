@@ -128,7 +128,7 @@ async def template_content(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("tmpl_") and not F.data.startswith("tmpl_add"))
+@router.callback_query(F.data.startswith("tmpl_") & ~F.data.startswith("tmpl_add"))
 async def template_detail(callback: CallbackQuery):
     """Show template detail."""
     parts = callback.data.split("_")
