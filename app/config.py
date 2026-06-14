@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 
 
@@ -17,6 +18,19 @@ class Settings(BaseSettings):
 
     # Admin
     ADMIN_IDS: list[int] = []
+
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v):
+        if isinstance(v, int):
+            return [v]
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                import json
+                return json.loads(v)
+            return [int(x.strip()) for x in v.split(",") if x.strip()]
+        return v
 
     # Twitter/X
     TWITTER_API_KEY: Optional[str] = ""
