@@ -26,7 +26,7 @@ from app.bot.handlers import all_routers
 from app.publishers.telegram_publisher import telegram_publisher
 from app.engine.scheduler import cortex_scheduler
 
-# Logging setup
+# Logging setup - increased verbosity for debugging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -44,10 +44,13 @@ _startup_error: str | None = None
 # Track the polling task
 _polling_task = None
 
+# Webhook info for debugging
+_webhook_info: dict = {}
+
 
 async def init_bot():
     """Initialize the Telegram bot - called separately so it doesn't block the web server."""
-    global bot, dp, _startup_complete, _startup_error
+    global bot, dp, _startup_complete, _startup_error, _webhook_info
 
     if not settings.is_bot_configured:
         logger.warning("BOT_TOKEN not configured - bot functionality disabled. Set BOT_TOKEN env variable.")
@@ -60,6 +63,10 @@ async def init_bot():
             token=settings.BOT_TOKEN,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
+
+        # Test bot connection first
+        me = await bot.get_me()
+        logger.info(f"Bot connected: @{me.username} (id={me.id})")
 
         # Initialize dispatcher
         dp = Dispatcher(storage=MemoryStorage())
@@ -86,12 +93,35 @@ async def init_bot():
         # Set up webhook or delete it for polling
         if settings.use_webhook:
             webhook_url = f"{settings.WEBAPP_URL}/webhook/bot"
-            await bot.set_webhook(
+
+            # First, delete any existing webhook
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Deleted previous webhook")
+
+            # Set new webhook
+            result = await bot.set_webhook(
                 url=webhook_url,
                 allowed_updates=dp.resolve_used_update_types(),
                 drop_pending_updates=True,
             )
-            logger.info(f"Webhook set to: {webhook_url}")
+            logger.info(f"set_webhook result: {result}")
+
+            # Verify webhook was set correctly
+            webhook_info = await bot.get_webhook_info()
+            _webhook_info = {
+                "url": webhook_info.url,
+                "has_custom_certificate": webhook_info.has_custom_certificate,
+                "pending_update_count": webhook_info.pending_update_count,
+                "last_error_date": str(webhook_info.last_error_date) if webhook_info.last_error_date else None,
+                "last_error_message": webhook_info.last_error_message,
+                "max_connections": webhook_info.max_connections,
+            }
+            logger.info(f"Webhook info: {json.dumps(_webhook_info, default=str)}")
+
+            if webhook_info.url != webhook_url:
+                logger.error(f"Webhook URL mismatch! Expected: {webhook_url}, Got: {webhook_info.url}")
+            else:
+                logger.info(f"Webhook verified and set to: {webhook_url}")
         else:
             await bot.delete_webhook(drop_pending_updates=True)
             logger.info("Webhook deleted - using polling mode")
@@ -99,9 +129,8 @@ async def init_bot():
         logger.info(f"Cortex Post bot initialized! (mode: {'webhook' if settings.use_webhook else 'polling'})")
 
     except Exception as e:
-        logger.error(f"Bot initialization error: {e}")
+        logger.error(f"Bot initialization error: {e}", exc_info=True)
         _startup_error = str(e)
-        # Don't crash - the web server should still work for healthchecks
         bot = None
         dp = None
 
@@ -139,7 +168,6 @@ async def lifespan(app: FastAPI):
     await init_database()
 
     # Step 2: Start bot initialization in background
-    # This way the web server can start accepting healthcheck requests right away
     asyncio.create_task(_background_init())
 
     yield
@@ -183,7 +211,7 @@ async def _background_init():
     # Initialize bot (webhook or polling)
     await init_bot()
 
-    # Start scheduler (depends on DB being ready, not on bot)
+    # Start scheduler
     await init_scheduler()
 
     # If not using webhook and bot is ready, start polling in background
@@ -225,7 +253,7 @@ if os.path.exists(static_path):
 
 @app.get("/")
 async def root():
-    """Root endpoint - simple JSON response for healthchecks."""
+    """Root endpoint - simple JSON response."""
     return JSONResponse(content={
         "message": "Cortex Post API",
         "version": "1.0.0",
@@ -254,16 +282,35 @@ async def health():
         "mode": "webhook" if settings.use_webhook else "polling",
         "startup_complete": _startup_complete,
         "startup_error": _startup_error,
+        "webhook_info": _webhook_info if settings.use_webhook else None,
     })
 
 
-# Webhook endpoint for Telegram updates
+@app.get("/webhook/info")
+async def webhook_info():
+    """Get current webhook info from Telegram - useful for debugging."""
+    if not bot:
+        return JSONResponse(content={"error": "Bot not initialized"})
+
+    try:
+        info = await bot.get_webhook_info()
+        return JSONResponse(content={
+            "url": info.url,
+            "has_custom_certificate": info.has_custom_certificate,
+            "pending_update_count": info.pending_update_count,
+            "last_error_date": str(info.last_error_date) if info.last_error_date else None,
+            "last_error_message": info.last_error_message,
+            "max_connections": info.max_connections,
+        })
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)})
+
+
 @app.post("/webhook/bot")
 async def telegram_webhook(request: Request):
     """
     Receive Telegram updates via webhook.
-    This endpoint receives POST requests from Telegram servers.
-    Uses dp.feed_update() - the proper aiogram 3.x method for webhook processing.
+    Uses dp.feed_update() - the proper aiogram 3.x method.
     """
     global bot, dp
 
@@ -273,30 +320,31 @@ async def telegram_webhook(request: Request):
 
     if not bot or not dp:
         logger.warning("Webhook received but bot not initialized yet")
-        return Response(status_code=200)  # Return 200 to not retry
+        return Response(status_code=200)
 
     try:
         body = await request.json()
-        
-        # Log incoming update type for debugging
+
+        # Log incoming update for debugging
         update_type = None
         if "message" in body:
-            update_type = f"message from {body['message'].get('from', {}).get('id', '?')}"
+            msg = body["message"]
+            update_type = f"message from {msg.get('from', {}).get('id', '?')} text={msg.get('text', '')[:50]}"
         elif "callback_query" in body:
-            update_type = f"callback from {body['callback_query'].get('from', {}).get('id', '?')}"
-        logger.info(f"Webhook update received: {update_type or list(body.keys())}")
-        
-        # Parse the update using model_validate (aiogram 3.x proper way)
+            cb = body["callback_query"]
+            update_type = f"callback from {cb.get('from', {}).get('id', '?')} data={cb.get('data', '')[:50]}"
+        logger.info(f"WEBHOOK UPDATE: {update_type or list(body.keys())}")
+
+        # Parse the update
         update = Update.model_validate(body)
 
-        # Process the update through the dispatcher using feed_update (public API)
-        # This is the correct method - NOT _process_update (which is internal)
+        # Process through dispatcher
         await dp.feed_update(bot, update)
 
         return Response(status_code=200)
     except Exception as e:
         logger.error(f"Webhook processing error: {e}", exc_info=True)
-        return Response(status_code=200)  # Return 200 anyway to not retry
+        return Response(status_code=200)
 
 
 if __name__ == "__main__":

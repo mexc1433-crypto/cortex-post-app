@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic import field_validator
 import os
+import json
 
 
 class Settings(BaseSettings):
@@ -16,8 +18,31 @@ class Settings(BaseSettings):
     # Database
     DATABASE_PATH: str = "cortex_post.db"
 
-    # Admin
+    # Admin - accepts: "7005859703" or "[7005859703]" or "7005859703,123456"
     ADMIN_IDS: list[int] = []
+
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v):
+        """Parse ADMIN_IDS from various string formats."""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            # Handle "[7005859703]" format
+            if v.startswith("[") and v.endswith("]"):
+                v = v[1:-1]
+            # Handle comma-separated
+            if "," in v:
+                return [int(x.strip()) for x in v.split(",") if x.strip()]
+            # Single number
+            try:
+                return [int(v)]
+            except ValueError:
+                return []
+        return []
 
     # Twitter/X
     TWITTER_API_KEY: Optional[str] = ""
