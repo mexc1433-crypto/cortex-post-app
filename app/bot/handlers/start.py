@@ -18,27 +18,35 @@ logger = logging.getLogger(__name__)
 async def cmd_start(message: Message, state: FSMContext):
     """Handle /start command."""
     await state.clear()
-    
-    # Register or get user
-    user = await crud.get_or_create_user(UserCreate(
-        telegram_id=message.from_user.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name,
-        language_code=message.from_user.language_code or "ar",
-    ))
-    
-    is_premium = user["tier"] == "premium"
-    tier_emoji = "💎" if is_premium else "🆓"
-    
-    text = (
-        f"🧠 أهلاً بيك في **Cortex Post**!\n\n"
-        f"منصتك الذكية لنشر المحتوى التلقائي على تليجرام وتويتر\n\n"
-        f"حالتك: {tier_emoji} {'مميز' if is_premium else 'مجاني'}\n\n"
-        f"اختار من القائمة اللي تحت 👇"
-    )
-    
-    await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+
+    logger.info(f"/start from user {message.from_user.id} (@{message.from_user.username or 'N/A'})")
+
+    try:
+        # Register or get user
+        user = await crud.get_or_create_user(UserCreate(
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name,
+            language_code=message.from_user.language_code or "ar",
+        ))
+
+        is_premium = user["tier"] == "premium"
+        tier_emoji = "💎" if is_premium else "🆓"
+
+        text = (
+            f"🧠 أهلاً بيك في **Cortex Post**!\n\n"
+            f"منصتك الذكية لنشر المحتوى التلقائي على تليجرام وتويتر\n\n"
+            f"حالتك: {tier_emoji} {'مميز' if is_premium else 'مجاني'}\n\n"
+            f"اختار من القائمة اللي تحت 👇"
+        )
+
+        await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+        logger.info(f"Start message sent to user {message.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error in /start handler: {e}", exc_info=True)
+        await message.answer("حصل خطأ، حاول تاني بكتابة /start")
 
 
 @router.message(Command("help"))
@@ -54,7 +62,8 @@ async def cmd_help(message: Message):
         "⚙️ **الإعدادات** - إعدادات الحساب\n"
         "💎 **الاشتراك المميز** - ترقية حسابك\n\n"
         "🖥 /panel - لوحة التحكم (ويب اب)\n"
-        "📊 /stats - إحصائيات سريعة"
+        "📊 /stats - إحصائيات سريعة\n"
+        "🔧 /debug - حالة النظام والتشخيص"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -66,7 +75,7 @@ async def cmd_panel(message: Message):
     if not user:
         await message.answer("أول حاجة ابدأ البوت بـ /start")
         return
-    
+
     text = "🖥 افتح لوحة التحكم من الزرار اللي تحت 👇"
     kb = open_mini_app_keyboard(settings.WEBAPP_URL)
     await message.answer(text, reply_markup=kb)
@@ -79,16 +88,16 @@ async def cmd_stats(message: Message):
     if not user:
         await message.answer("أول حاجة ابدأ البوت بـ /start")
         return
-    
+
     from app.freemium import freemium
     limits = await freemium.get_user_limits(user["id"])
-    
+
     ch = limits.get("channels", {})
     ru = limits.get("rules", {})
     te = limits.get("templates", {})
-    
+
     tier = "💎 مميز" if user["tier"] == "premium" else "🆓 مجاني"
-    
+
     text = (
         f"📊 **إحصائيات حسابك**\n\n"
         f"الحالة: {tier}\n"
@@ -96,6 +105,51 @@ async def cmd_stats(message: Message):
         f"⚡ القواعد: {ru.get('used', 0)}/{ru.get('max', 0)}\n"
         f"📝 القوالب: {te.get('used', 0)}/{te.get('max', 0)}\n"
     )
+    await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(Command("debug"))
+async def cmd_debug(message: Message):
+    """Debug command - show system status."""
+    from app.main import bot as app_bot, dp as app_dp
+    from app.main import _webhook_updates_received, _startup_complete, _startup_error
+
+    lines = ["🔧 **تشخيص Cortex Post**\n"]
+
+    # Bot status
+    if app_bot:
+        try:
+            me = await app_bot.get_me()
+            lines.append(f"✅ البوت: @{me.username}")
+        except Exception as e:
+            lines.append(f"❌ البوت: خطأ - {e}")
+    else:
+        lines.append("❌ البوت: غير معد")
+
+    # Webhook status
+    if settings.use_webhook and app_bot:
+        try:
+            info = await app_bot.get_webhook_info()
+            lines.append(f"📡 Webhook: {info.url}")
+            lines.append(f"📋 تحديثات معلقة: {info.pending_update_count}")
+            if info.last_error_message:
+                lines.append(f"⚠️ آخر خطأ: {info.last_error_message}")
+            else:
+                lines.append("✅ لا أخطاء في الـ webhook")
+        except Exception as e:
+            lines.append(f"❌ Webhook info error: {e}")
+    else:
+        lines.append("📡 الوضع: Polling")
+
+    lines.append(f"📨 تحديثات مستلمة: {_webhook_updates_received}")
+    lines.append(f"🚀 بدء التشغيل: {'مكتمل' if _startup_complete else 'جاري...'}")
+
+    if _startup_error:
+        lines.append(f"❌ خطأ: {_startup_error}")
+
+    lines.append(f"🔗 الرابط: {settings.WEBAPP_URL}")
+
+    text = "\n".join(lines)
     await message.answer(text, parse_mode="Markdown")
 
 
