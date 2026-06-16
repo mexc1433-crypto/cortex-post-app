@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # Webhook secret for providers
     WEBHOOK_SECRET: Optional[str] = ""
 
+    # Admin notifications
+    ADMIN_NOTIFY_ON_START: bool = True  # Send admin notification when bot starts
+    ADMIN_NOTIFY_ON_ERROR: bool = True  # Send admin notification on errors
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

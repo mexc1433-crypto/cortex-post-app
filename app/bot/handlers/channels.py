@@ -2,7 +2,7 @@
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
-from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, ADMINISTRATOR
+from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, ADMINISTRATOR, OWNER
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -19,6 +19,90 @@ class ChannelStates(StatesGroup):
     waiting_for_channel = State()
 
 
+# ============================================================================
+# My Chat Member Handler - Auto-detect when bot is added/removed from channels
+# ============================================================================
+
+@router.my_chat_member()
+async def on_bot_chat_member_updated(event: ChatMemberUpdated):
+    """
+    Automatically detect when the bot is added to or removed from a channel/group.
+    This handler fires when the bot's own chat member status changes.
+    """
+    old_status = event.old_chat_member.status
+    new_status = event.new_chat_member.status
+
+    chat = event.chat
+    user_id = event.from_user.id
+
+    logger.info(
+        f"Bot chat member update: chat={chat.id} ({chat.type}) "
+        f"title={chat.title} old={old_status} new={new_status} "
+        f"by user={user_id}"
+    )
+
+    # Bot was added to a channel/group as admin
+    if new_status in ("administrator", "member") and old_status in ("left", "kicked"):
+        if chat.type in ("channel", "supergroup", "group"):
+            # Try to find the user who added the bot
+            db_user = await crud.get_user_by_telegram_id(user_id)
+
+            if db_user:
+                # Check if channel already exists
+                existing_channels = await crud.get_channels_by_user(db_user["id"])
+                already_exists = any(
+                    ch["channel_telegram_id"] == chat.id for ch in existing_channels
+                )
+
+                if not already_exists:
+                    # Auto-add the channel
+                    try:
+                        from app.freemium import freemium
+                        if await freemium.can_add_channel(db_user["id"]):
+                            channel = await crud.create_channel(
+                                db_user["id"],
+                                ChannelCreate(
+                                    channel_telegram_id=chat.id,
+                                    channel_title=chat.title or str(chat.id),
+                                    channel_username=chat.username,
+                                    channel_type="channel" if chat.type == "channel" else "group",
+                                ),
+                            )
+                            logger.info(f"Auto-added channel {chat.title} for user {user_id}")
+
+                            # Notify the user
+                            try:
+                                await event.bot.send_message(
+                                    chat_id=user_id,
+                                    text=f"✅ تم إضافة القناة <b>{chat.title}</b> تلقائياً!\n\nالقناة جاهزة للاستخدام مع القواعد.",
+                                )
+                            except Exception as e:
+                                logger.warning(f"Could not notify user {user_id}: {e}")
+                        else:
+                            try:
+                                await event.bot.send_message(
+                                    chat_id=user_id,
+                                    text=f"⚠️ تم إضافة البوت لقناة <b>{chat.title}</b> لكن وصلت للحد الأقصى!\n\nرقّي حسابك للمميز عشان تضيف قنوات أكتر.",
+                                )
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.error(f"Error auto-adding channel: {e}")
+                else:
+                    logger.info(f"Channel {chat.id} already exists for user {user_id}")
+            else:
+                logger.info(f"User {user_id} not registered, skipping auto-add")
+
+    # Bot was removed from a channel/group
+    elif new_status in ("left", "kicked") and old_status in ("administrator", "member"):
+        logger.info(f"Bot removed from {chat.type} {chat.title} ({chat.id})")
+        # We don't auto-delete - just log it. The channel will fail on publish anyway.
+
+
+# ============================================================================
+# Manual channel management
+# ============================================================================
+
 @router.message(F.text == "📢 القنوات")
 async def show_channels(message: Message):
     """Show user's channels."""
@@ -30,12 +114,16 @@ async def show_channels(message: Message):
     channels = await crud.get_channels_by_user(user["id"])
     
     if not channels:
-        text = "📢 ماعندكش قنوات لسه\n\nاضيف القناة وادي البوت صلاحية الأدمن فيها"
+        text = (
+            "📢 ماعندكش قنوات لسه\n\n"
+            "💡 <b>طريقة سهلة:</b> ضيف البوت كأدمن في القناة وهو هيضيفها تلقائي!\n\n"
+            "أو استخدم الزرار اللي تحت عشان تضيفها يدوي"
+        )
     else:
-        text = f"📢 **قنواتك** ({len(channels)})\n\nاضغط على قناة للتفاصيل:"
+        text = f"📢 <b>قنواتك</b> ({len(channels)})\n\nاضغط على قناة للتفاصيل:"
     
     kb = channels_keyboard(channels)
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "ch_add")
@@ -52,11 +140,11 @@ async def add_channel_start(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(ChannelStates.waiting_for_channel)
     await callback.message.edit_text(
-        "➕ **إضافة قناة**\n\n"
+        "➕ <b>إضافة قناة</b>\n\n"
+        "💡 <b>أسهل طريقة:</b> ضيف البوت كأدمن في القناة وهيتضاف تلقائي!\n\n"
+        "أو اكتب معرف القناة:\n"
         "1. ضيف البوت كأدمن في القناة\n"
-        "2. ابعت معرف القناة (مثال: @my_channel)\n"
-        "أو ابعته للأمام رسالة من القناة",
-        parse_mode="Markdown"
+        "2. ابعت معرف القناة (مثال: @my_channel)"
     )
     await callback.answer()
 
@@ -98,8 +186,7 @@ async def process_channel_add(message: Message, state: FSMContext):
         )
         
         await message.answer(
-            f"✅ تم إضافة القناة **{chat.title}** بنجاح!",
-            parse_mode="Markdown"
+            f"✅ تم إضافة القناة <b>{chat.title}</b> بنجاح!"
         )
         
     except Exception as e:
@@ -124,7 +211,7 @@ async def channel_detail(callback: CallbackQuery):
     
     status = "✅ فعّالة" if channel["is_active"] else "❌ متوقفة"
     text = (
-        f"📢 **{channel['channel_title']}**\n\n"
+        f"📢 <b>{channel['channel_title']}</b>\n\n"
         f"المعرف: @{channel.get('channel_username', '—')}\n"
         f"النوع: {channel['channel_type']}\n"
         f"الحالة: {status}\n"
@@ -132,7 +219,7 @@ async def channel_detail(callback: CallbackQuery):
     )
     
     kb = channel_detail_keyboard(channel_id)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
@@ -146,9 +233,9 @@ async def delete_channel_confirm(callback: CallbackQuery):
         await callback.answer("القناة مش موجودة", show_alert=True)
         return
     
-    text = f"⚠️ متأكد إنك عايز تحذف القناة **{channel['channel_title']}**؟"
+    text = f"⚠️ متأكد إنك عايز تحذف القناة <b>{channel['channel_title']}</b>؟"
     kb = confirm_keyboard("ch_del", channel_id)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
@@ -176,7 +263,7 @@ async def back_to_channels(callback: CallbackQuery):
         return
     
     channels = await crud.get_channels_by_user(user["id"])
-    text = f"📢 **قنواتك** ({len(channels)})"
+    text = f"📢 <b>قنواتك</b> ({len(channels)})"
     kb = channels_keyboard(channels)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()

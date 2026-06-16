@@ -57,6 +57,15 @@ class CortexScheduler:
             replace_existing=True,
         )
         
+        # Webhook health check (every 5 minutes)
+        self.scheduler.add_job(
+            self.check_webhook_health,
+            trigger=IntervalTrigger(minutes=5),
+            id="webhook_health",
+            name="Check webhook health",
+            replace_existing=True,
+        )
+        
         self.scheduler.start()
         self._running = True
         logger.info("Scheduler started successfully")
@@ -239,6 +248,42 @@ class CortexScheduler:
             logger.info("Old post logs cleaned up")
         except Exception as e:
             logger.error(f"Error cleaning up logs: {e}")
+    
+    async def check_webhook_health(self):
+        """Periodically check webhook health and re-register if needed."""
+        if not settings.use_webhook:
+            return
+        
+        try:
+            from app.main import bot as app_bot, _webhook_updates_received
+            if not app_bot:
+                return
+            
+            info = await app_bot.get_webhook_info()
+            
+            # Check if webhook URL is still set
+            expected_url = f"{settings.WEBAPP_URL}/webhook/bot"
+            if info.url != expected_url:
+                logger.warning(f"Webhook URL mismatch! Expected: {expected_url}, Got: {info.url}")
+                # Re-register
+                await app_bot.set_webhook(
+                    url=expected_url,
+                    allowed_updates=["message", "callback_query", "my_chat_member", "chat_member", "inline_query"],
+                    drop_pending_updates=False,
+                    max_connections=40,
+                )
+                logger.info("Webhook re-registered due to URL mismatch")
+            
+            # Check for errors
+            if info.last_error_message:
+                logger.warning(f"Webhook error from Telegram: {info.last_error_message}")
+            
+            # Check for stuck pending updates
+            if info.pending_update_count > 10:
+                logger.warning(f"High pending updates: {info.pending_update_count}")
+        
+        except Exception as e:
+            logger.error(f"Webhook health check error: {e}")
     
     async def trigger_rule_now(self, rule_id: int):
         """Manually trigger a rule immediately."""
