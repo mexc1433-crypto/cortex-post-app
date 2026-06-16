@@ -2,7 +2,8 @@
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
-from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, ADMINISTRATOR, OWNER
+# Note: ChatMemberUpdatedFilter and status constants (KICKED, MEMBER, ADMINISTRATOR, CREATOR)
+# are available from aiogram.filters but not needed here - we compare status strings directly
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
