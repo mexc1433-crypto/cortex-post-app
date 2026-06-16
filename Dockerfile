@@ -23,4 +23,4 @@ EXPOSE 8000
 
 # Run the application - use PORT env variable with fallback to 8000
 # Shell form CMD allows environment variable expansion
-CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75
+CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75 --log-level info --access-log

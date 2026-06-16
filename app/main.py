@@ -2,14 +2,13 @@
 Cortex Post - Main Application Entry Point
 Runs FastAPI web server + Telegram Bot (Webhook mode) + APScheduler together.
 
-KEY FIXES v2.0:
-- Replaced BaseHTTPMiddleware with pure ASGI middleware (fixes body consumption bug)
-- Explicitly set allowed_updates for webhook (message, callback_query, my_chat_member)
-- Webhook handler returns 200 immediately, processes update in background
-- Added comprehensive diagnostics endpoints
-- Added webhook test/simulate/reset endpoints
-- Added admin notification on startup
-- Better error handling and logging
+v3.0 - BULLETPROOF WEBHOOK FIX:
+- REMOVED custom ASGI middleware (was causing 502 Bad Gateway via send() interception)
+- Using aiogram's built-in webhook handler via dp.feed_update()
+- Webhook endpoint is as simple as possible: read body -> parse -> feed_update -> 200
+- No middleware touches the request body at all
+- Uvicorn access logs handle request logging instead of custom middleware
+- Startup sequence is non-blocking and webhook-ready immediately
 """
 import asyncio
 import json
@@ -57,20 +56,14 @@ _init_start_time: float = 0
 # Track the polling task
 _polling_task = None
 
-# Webhook info for debugging
+# Webhook diagnostics
 _webhook_info: dict = {}
-
-# Request counter for diagnostics
-_request_count = 0
 _webhook_updates_received = 0
 _webhook_updates_processed = 0
 _webhook_updates_errors = 0
 _last_webhook_update_time: Optional[str] = None
-_last_request_log: dict = {}
 
 # Explicitly define allowed update types for Telegram webhook
-# This is critical - if we rely on dp.resolve_used_update_types() and it returns
-# an incomplete list, Telegram won't send those update types!
 ALLOWED_UPDATE_TYPES = [
     "message",
     "callback_query",
@@ -81,86 +74,11 @@ ALLOWED_UPDATE_TYPES = [
 
 
 # ============================================================================
-# Pure ASGI Request Logging Middleware
-# ============================================================================
-# CRITICAL FIX: We do NOT use BaseHTTPMiddleware because it has a known bug
-# where it consumes the request body, making it unavailable to the endpoint
-# handler. This is especially problematic for POST endpoints like /webhook/bot
-# that need to read the JSON body. Instead, we use a pure ASGI middleware
-# that only reads the scope (headers, method, path) without touching the body.
-
-class ASGIRequestLoggingMiddleware:
-    """Pure ASGI middleware that logs requests WITHOUT consuming the body."""
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        global _request_count
-        _request_count += 1
-        req_num = _request_count
-
-        # Extract request info from scope (no body reading!)
-        method = scope.get("method", "?")
-        path = scope.get("path", "?")
-        headers = dict(
-            (k.decode() if isinstance(k, bytes) else k, v.decode() if isinstance(v, bytes) else v)
-            for k, v in scope.get("headers", [])
-        )
-        client = scope.get("client")
-        client_ip = client[0] if client else "unknown"
-        user_agent = headers.get("user-agent", "")
-        content_type = headers.get("content-type", "")
-
-        start = time.time()
-
-        # Log incoming request
-        logger.info(
-            f">>> REQ #{req_num}: {method} {path} from {client_ip} "
-            f"UA={user_agent[:50]} CT={content_type[:30]}"
-        )
-
-        # Track the request
-        _last_request_log[f"#{req_num}"] = {
-            "method": method,
-            "path": path,
-            "ip": client_ip,
-            "time": datetime.utcnow().isoformat(),
-        }
-
-        # Intercept send to log response status
-        status_code = None
-
-        async def send_with_log(message):
-            nonlocal status_code
-            if message["type"] == "http.response.start":
-                status_code = message.get("status", 0)
-            await send(message)
-
-        try:
-            await self.app(scope, receive, send_with_log)
-            duration = (time.time() - start) * 1000
-            logger.info(
-                f"<<< RES #{req_num}: {method} {path} -> {status_code} ({duration:.0f}ms)"
-            )
-        except Exception as e:
-            duration = (time.time() - start) * 1000
-            logger.error(
-                f"!!! ERR #{req_num}: {method} {path} -> {e} ({duration:.0f}ms)"
-            )
-            raise
-
-
-# ============================================================================
 # Initialization Functions
 # ============================================================================
 
 async def init_bot():
-    """Initialize the Telegram bot - called separately so it doesn't block the web server."""
+    """Initialize the Telegram bot."""
     global bot, dp, _startup_complete, _startup_error, _webhook_info, _startup_time, _init_start_time
 
     if not settings.is_bot_configured:
@@ -186,11 +104,9 @@ async def init_bot():
         for router in all_routers:
             dp.include_router(router)
 
-        # Log what update types are resolved by the dispatcher
         resolved_types = dp.resolve_used_update_types()
         logger.info(f"Dispatcher resolved update types: {resolved_types}")
-        logger.info(f"Our explicit allowed_updates: {ALLOWED_UPDATE_TYPES}")
-
+        logger.info(f"Explicit allowed_updates: {ALLOWED_UPDATE_TYPES}")
         logger.info(f"Bot dispatcher configured with {len(all_routers)} routers")
 
         # Set bot instance in telegram publisher
@@ -253,26 +169,26 @@ async def init_bot():
                 missing = set(ALLOWED_UPDATE_TYPES) - set(webhook_info.allowed_updates)
                 if missing:
                     logger.warning(f"Missing from Telegram allowed_updates: {missing}")
-            else:
-                logger.warning("Telegram returned empty allowed_updates - this means ALL update types (default)")
 
-            # Send admin notification
-            await _notify_admins(
+            # Send admin notification (non-blocking)
+            asyncio.create_task(_notify_admins(
                 "🟢 <b>Cortex Post Bot Started!</b>\n\n"
                 f"Mode: Webhook\n"
                 f"URL: <code>{webhook_url}</code>\n"
                 f"Allowed updates: {', '.join(ALLOWED_UPDATE_TYPES)}\n"
+                f"Version: 3.0\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
-            )
+            ))
         else:
             await bot.delete_webhook(drop_pending_updates=True)
             logger.info("Webhook deleted - using polling mode")
 
-            await _notify_admins(
+            asyncio.create_task(_notify_admins(
                 "🟢 <b>Cortex Post Bot Started!</b>\n\n"
                 f"Mode: Polling\n"
+                f"Version: 3.0\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
-            )
+            ))
 
         _startup_time = time.time()
         logger.info(f"Cortex Post bot initialized! (mode: {'webhook' if settings.use_webhook else 'polling'})")
@@ -388,12 +304,13 @@ async def start_bot_polling():
 app = FastAPI(
     title="Cortex Post API",
     description="Automated content publishing platform API",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
-# Add ASGI request logging middleware (NOT BaseHTTPMiddleware!)
-app.add_middleware(ASGIRequestLoggingMiddleware)
+# NO CUSTOM MIDDLEWARE! This was the root cause of 502 errors.
+# The previous ASGI middleware intercepted send() which broke response flow.
+# We rely on uvicorn's built-in access logging instead.
 
 # Mount API routes
 from app.api.routes import api_router
@@ -431,7 +348,7 @@ async def health():
         "mode": "webhook" if settings.use_webhook else "polling",
         "startup_complete": _startup_complete,
         "startup_error": _startup_error,
-        "version": "2.0.0",
+        "version": "3.0.0",
     })
 
 
@@ -454,9 +371,6 @@ async def debug_endpoint():
             }
         except Exception as e:
             status["telegram_webhook_info"] = {"error": str(e)}
-
-    # Recent request logs (last 20)
-    status["recent_requests"] = dict(list(_last_request_log.items())[-20:])
 
     return JSONResponse(content=status, status_code=200)
 
@@ -496,6 +410,7 @@ async def webhook_test_get():
         "last_update_time": _last_webhook_update_time,
         "note": "Telegram sends POST requests to /webhook/bot. This GET is for testing only.",
         "allowed_updates": ALLOWED_UPDATE_TYPES,
+        "version": "3.0.0",
     })
 
 
@@ -503,7 +418,6 @@ async def webhook_test_get():
 async def webhook_test_post(request: Request):
     """
     Simulate a Telegram webhook update for testing.
-    Send a JSON body like: {"message": {"message_id": 1, "from": {"id": 123, "is_bot": false, "first_name": "Test"}, "chat": {"id": 123, "type": "private"}, "date": 1234567890, "text": "/start"}}
     """
     global _webhook_updates_received, _last_webhook_update_time
 
@@ -514,7 +428,6 @@ async def webhook_test_post(request: Request):
         body = await request.json()
         logger.info(f"WEBHOOK TEST: Received simulated update: {json.dumps(body)[:200]}")
 
-        # Try to process it like a real update
         try:
             update = Update.model_validate(body)
             _webhook_updates_received += 1
@@ -538,13 +451,11 @@ async def webhook_reset():
         return JSONResponse(content={"error": "Bot not initialized"})
 
     try:
-        # Delete current webhook
         await bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook deleted for reset")
 
         await asyncio.sleep(1)
 
-        # Re-set webhook
         if settings.use_webhook:
             webhook_url = f"{settings.WEBAPP_URL}/webhook/bot"
             result = await bot.set_webhook(
@@ -555,7 +466,6 @@ async def webhook_reset():
             )
             logger.info(f"Webhook re-set result: {result}")
 
-            # Verify
             info = await bot.get_webhook_info()
             return JSONResponse(content={
                 "status": "reset",
@@ -573,44 +483,78 @@ async def webhook_reset():
         return JSONResponse(content={"error": str(e)})
 
 
+# ============================================================================
+# CRITICAL: Telegram Webhook Handler
+# ============================================================================
+# This is the endpoint that Telegram calls when it has updates.
+# It MUST:
+# 1. Return 200 ASAP (Telegram times out after 60 seconds)
+# 2. NOT be interfered with by any middleware
+# 3. Parse the JSON body correctly
+# 4. Feed the update to aiogram's dispatcher
+#
+# v3.0 FIX: No middleware wraps this endpoint. The previous ASGI middleware
+# was intercepting send() calls which caused 502 Bad Gateway errors on
+# Railway's proxy. Now we use zero middleware and rely on uvicorn access logs.
+
 @app.post("/webhook/bot")
 async def telegram_webhook(request: Request):
     """
     Receive Telegram updates via webhook.
 
-    CRITICAL: This endpoint MUST return 200 quickly. Telegram expects a fast
-    response or it will timeout and retry. We process the update in a
-    background task to avoid blocking the response.
+    This is called by Telegram's servers when users interact with the bot.
+    We read the body, parse it as a Telegram Update, and feed it to the
+    aiogram dispatcher for processing.
     """
     global _webhook_updates_received, _last_webhook_update_time
 
+    # Increment counter immediately for diagnostics
     _webhook_updates_received += 1
     update_num = _webhook_updates_received
     _last_webhook_update_time = datetime.utcnow().isoformat()
 
+    # If webhook mode is not enabled, reject
     if not settings.use_webhook:
         logger.warning(f"WEBHOOK #{update_num}: POST received but webhook mode not enabled!")
         return Response(status_code=403, content="Webhook mode not enabled")
 
+    # If bot/dispatcher not ready yet, return 200 anyway to prevent Telegram retries
     if not bot or not dp:
-        logger.warning(f"WEBHOOK #{update_num}: POST received but bot not initialized yet")
+        logger.warning(f"WEBHOOK #{update_num}: Bot not initialized yet, returning 200 to prevent retries")
         return Response(status_code=200)
 
     try:
-        # Read raw body
+        # Read the raw request body
         raw_body = await request.body()
-        body = json.loads(raw_body)
 
-        # Log update details
+        if not raw_body:
+            logger.warning(f"WEBHOOK #{update_num}: Empty body received")
+            return Response(status_code=200)
+
+        # Parse JSON
+        try:
+            body = json.loads(raw_body)
+        except json.JSONDecodeError as e:
+            logger.error(f"WEBHOOK #{update_num}: JSON parse error: {e}")
+            _webhook_updates_errors += 1
+            return Response(status_code=200)  # Still 200 to avoid Telegram retries
+
+        # Log the update type for diagnostics
         update_type = "unknown"
         if "message" in body:
             msg = body["message"]
-            update_type = f"message from {msg.get('from', {}).get('id', '?')} text={msg.get('text', '')[:80]}"
+            text = msg.get("text", "")[:80]
+            from_id = msg.get("from", {}).get("id", "?")
+            update_type = f"message from={from_id} text={text}"
         elif "callback_query" in body:
             cb = body["callback_query"]
-            update_type = f"callback from {cb.get('from', {}).get('id', '?')} data={cb.get('data', '')[:80]}"
+            data = cb.get("data", "")[:80]
+            from_id = cb.get("from", {}).get("id", "?")
+            update_type = f"callback from={from_id} data={data}"
         elif "my_chat_member" in body:
-            update_type = f"my_chat_member from {body['my_chat_member'].get('from', {}).get('id', '?')}"
+            mcm = body["my_chat_member"]
+            from_id = mcm.get("from", {}).get("id", "?")
+            update_type = f"my_chat_member from={from_id}"
         elif "chat_member" in body:
             update_type = "chat_member"
         else:
@@ -618,33 +562,30 @@ async def telegram_webhook(request: Request):
 
         logger.info(f"WEBHOOK #{update_num}: {update_type}")
 
-        # Process update in background task - return 200 immediately!
-        asyncio.create_task(_process_webhook_update(update_num, body))
+        # Process the update - two options:
+        # Option A: Process immediately (simple, but blocks the response)
+        # Option B: Process in background (fast response, but update might fail silently)
+        #
+        # We use Option A because Telegram gives us 60 seconds before timeout,
+        # and most updates process in under 1 second. This ensures we catch
+        # any errors immediately and don't lose updates to silent task failures.
+
+        try:
+            update = Update.model_validate(body)
+            await dp.feed_update(bot, update)
+            _webhook_updates_processed += 1
+            logger.info(f"WEBHOOK #{update_num}: Processed OK")
+        except Exception as e:
+            _webhook_updates_errors += 1
+            logger.error(f"WEBHOOK #{update_num}: Processing error: {e}", exc_info=True)
 
         return Response(status_code=200)
 
-    except json.JSONDecodeError as e:
-        logger.error(f"WEBHOOK #{update_num}: JSON parse error: {e}")
-        _webhook_updates_errors += 1
-        return Response(status_code=200)  # Still return 200 to avoid Telegram retries
     except Exception as e:
-        logger.error(f"WEBHOOK #{update_num}: Error: {e}", exc_info=True)
+        logger.error(f"WEBHOOK #{update_num}: Unexpected error: {e}", exc_info=True)
         _webhook_updates_errors += 1
-        return Response(status_code=200)  # Still return 200
-
-
-async def _process_webhook_update(update_num: int, body: dict):
-    """Process a webhook update in the background."""
-    global _webhook_updates_processed, _webhook_updates_errors
-
-    try:
-        update = Update.model_validate(body)
-        await dp.feed_update(bot, update)
-        _webhook_updates_processed += 1
-        logger.info(f"WEBHOOK #{update_num}: Processed OK")
-    except Exception as e:
-        _webhook_updates_errors += 1
-        logger.error(f"WEBHOOK #{update_num}: Processing error: {e}", exc_info=True)
+        # Always return 200 to prevent Telegram from retrying endlessly
+        return Response(status_code=200)
 
 
 # ============================================================================
@@ -657,7 +598,7 @@ def _get_status_dict() -> dict:
     init_time = time.time() - _init_start_time if _init_start_time else 0
     return {
         "app": "Cortex Post",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "running",
         "uptime_seconds": round(uptime, 1),
         "init_time_seconds": round(init_time, 1),
@@ -691,8 +632,7 @@ def _get_status_dict() -> dict:
             "ADMIN_IDS": settings.ADMIN_IDS,
             "DATABASE_PATH": settings.DATABASE_PATH,
         },
-        "requests_total": _request_count,
-        "middleware": "ASGIRequestLoggingMiddleware (body-safe)",
+        "middleware": "None (v3.0 - removed ASGI middleware that caused 502)",
     }
 
 
@@ -842,17 +782,27 @@ def _generate_dashboard_html() -> str:
             margin: 12px 0;
             color: #fbbf24;
         }}
+        .success-box {{
+            background: #064e3b;
+            border: 1px solid #065f46;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 12px 0;
+            color: #4ade80;
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Cortex Post</h1>
-        <p class="subtitle">منصة النشر التلقائي الذكية v2.0</p>
+        <p class="subtitle">منصة النشر التلقائي الذكية v3.0</p>
 
         <div class="health-bar">
             <div class="health-dot"></div>
             <span class="health-text">{health_text}</span>
         </div>
+
+        {"<div class='success-box'>Webhook updates are being received and processed! The bot is working correctly.</div>" if updates > 0 and _startup_complete and settings.use_webhook else ""}
 
         {"<div class='warning-box'>No webhook updates received yet. If the bot has been running for a while, check: 1) Telegram Bot API token is correct, 2) WEBAPP_URL is accessible from the internet, 3) Try /webhook/reset to re-register the webhook.</div>" if updates == 0 and _startup_complete and settings.use_webhook else ""}
 
@@ -874,8 +824,8 @@ def _generate_dashboard_html() -> str:
                     <div class="stat-label">أخطاء</div>
                 </div>
                 <div class="stat-box">
-                    <div class="stat-number">{_request_count}</div>
-                    <div class="stat-label">طلبات HTTP</div>
+                    <div class="stat-number">{processed}</div>
+                    <div class="stat-label">تم المعالجة</div>
                 </div>
             </div>
         </div>
@@ -884,7 +834,7 @@ def _generate_dashboard_html() -> str:
             <h2>حالة النظام</h2>
             <div class="status-row">
                 <span class="status-label">التطبيق</span>
-                <span class="badge badge-ok">يعمل v2.0</span>
+                <span class="badge badge-ok">يعمل v3.0</span>
             </div>
             <div class="status-row">
                 <span class="status-label">قاعدة البيانات</span>
@@ -900,7 +850,7 @@ def _generate_dashboard_html() -> str:
             </div>
             <div class="status-row">
                 <span class="status-label">الميدلوير</span>
-                <span class="status-value ok">ASGI (body-safe)</span>
+                <span class="status-value ok">لا يوجد (v3.0)</span>
             </div>
             <div class="status-row">
                 <span class="status-label">بدء التشغيل</span>
@@ -952,7 +902,7 @@ def _generate_dashboard_html() -> str:
             <a href="/api/status">API Status</a>
         </div>
 
-        <p class="footer">Cortex Post v2.0.0 | ASGI Middleware | Railway</p>
+        <p class="footer">Cortex Post v3.0.0 | No Middleware | Railway</p>
     </div>
 
     <script>

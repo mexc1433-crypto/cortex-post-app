@@ -157,7 +157,7 @@ async def cmd_debug(message: Message):
         _last_webhook_update_time, ALLOWED_UPDATE_TYPES
     )
 
-    lines = ["🔧 <b>تشخيص Cortex Post v2.0</b>\n"]
+    lines = ["🔧 <b>تشخيص Cortex Post v3.0</b>\n"]
 
     # Bot status
     if app_bot:
@@ -199,6 +199,7 @@ async def cmd_debug(message: Message):
 
     lines.append(f"🔗 الرابط: {settings.WEBAPP_URL}")
     lines.append(f"🔧 Allowed Updates: {', '.join(ALLOWED_UPDATE_TYPES)}")
+    lines.append(f"🔧 Middleware: لا يوجد (v3.0)")
 
     # Uptime
     uptime = time.time() - _bot_start_time

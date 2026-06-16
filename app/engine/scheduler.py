@@ -255,7 +255,7 @@ class CortexScheduler:
             return
         
         try:
-            from app.main import bot as app_bot, _webhook_updates_received
+            from app.main import bot as app_bot
             if not app_bot:
                 return
             
@@ -274,9 +274,23 @@ class CortexScheduler:
                 )
                 logger.info("Webhook re-registered due to URL mismatch")
             
-            # Check for errors
+            # Check for errors from Telegram's side
             if info.last_error_message:
                 logger.warning(f"Webhook error from Telegram: {info.last_error_message}")
+                
+                # If we see 502 errors, it might mean Railway's proxy had a brief issue
+                # Re-register the webhook to force Telegram to retry
+                if "502" in (info.last_error_message or ""):
+                    logger.warning("502 error detected - re-registering webhook to force Telegram retry")
+                    await app_bot.delete_webhook(drop_pending_updates=True)
+                    await asyncio.sleep(1)
+                    await app_bot.set_webhook(
+                        url=expected_url,
+                        allowed_updates=["message", "callback_query", "my_chat_member", "chat_member", "inline_query"],
+                        drop_pending_updates=False,
+                        max_connections=40,
+                    )
+                    logger.info("Webhook re-registered after 502 error")
             
             # Check for stuck pending updates
             if info.pending_update_count > 10:
