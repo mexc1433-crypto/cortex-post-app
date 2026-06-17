@@ -103,7 +103,7 @@ async def init_bot():
                 drop_pending_updates=True,
                 max_connections=40
             )
-            logger.success(f"✅ Webhook set: {webhook_url}")
+            logger.success(f"✅ Webhook registered: {webhook_url}")
 
         _startup_complete = True
     except Exception as e:
@@ -145,7 +145,7 @@ async def rate_limit_middleware(request: Request, call_next):
     except RateLimitExceeded:
         return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
 
-# Routes
+# API Routes
 from app.api.routes import api_router
 app.include_router(api_router)
 
@@ -154,32 +154,36 @@ static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+
 # ====================== Endpoints ======================
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "3.1.0"}
 
+
 @app.get("/debug")
 async def debug():
     return {
         "status": "running",
+        "version": "3.1.0",
         "uptime": round(time.time() - _startup_time, 1) if _startup_time else 0,
-        "bot": bool(bot),
-        "webhook": settings.use_webhook
+        "bot_ready": bool(bot),
+        "webhook_mode": settings.use_webhook,
+        "updates_received": _webhook_updates_received,
+        "updates_processed": _webhook_updates_processed,
+        "errors": _webhook_updates_errors
     }
 
-# Webhook Handler (النسخة المستقرة v3.0)
-# ====================== Webhook Handler (v3.0 Bulletproof) ======================
+
+# ====================== Webhook Handler (Bulletproof) ======================
 @app.post("/webhook/bot")
 async def telegram_webhook(request: Request):
-    """Telegram Webhook - مستقر 100% (بدون middleware تدخل)"""
     global _webhook_updates_received, _webhook_updates_processed, _webhook_updates_errors, _last_webhook_update_time
 
     _webhook_updates_received += 1
     _last_webhook_update_time = datetime.utcnow().isoformat()
 
     if not settings.use_webhook or not bot or not dp:
-        logger.warning("Webhook received but bot not ready")
         return Response(status_code=200)
 
     try:
@@ -192,31 +196,13 @@ async def telegram_webhook(request: Request):
 
         await dp.feed_update(bot, update)
         _webhook_updates_processed += 1
-        logger.info(f"Webhook processed successfully (total: {_webhook_updates_processed})")
-
+        logger.info(f"Webhook processed successfully")
         return Response(status_code=200)
 
     except Exception as e:
         _webhook_updates_errors += 1
-        logger.error(f"Webhook processing error: {e}", exc_info=True)
-        return Response(status_code=200)  # مهم: دايما 200 عشان Telegram ميعيدش
-
-
-# ====================== Extra Endpoints ======================
-@app.get("/debug")
-async def debug():
-    return {
-        "status": "running",
-        "version": "3.1.0",
-        "uptime": round(time.time() - _startup_time, 1) if _startup_time else 0,
-        "bot_ready": bool(bot),
-        "webhook_mode": settings.use_webhook,
-        "updates": {
-            "received": _webhook_updates_received,
-            "processed": _webhook_updates_processed,
-            "errors": _webhook_updates_errors
-        }
-    }
+        logger.error(f"Webhook error: {e}", exc_info=True)
+        return Response(status_code=200)
 
 
 if __name__ == "__main__":
