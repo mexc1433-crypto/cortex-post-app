@@ -1,26 +1,27 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
 
-# Create data directory for SQLite
+# Create data dir for SQLite
 RUN mkdir -p /data
 
-# Expose port (informational - Railway uses PORT env)
-EXPOSE 8000
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-# Run the application - use PORT env variable with fallback to 8000
-# Shell form CMD allows environment variable expansion
-CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75 --log-level info --access-log
+EXPOSE ${PORT:-8000}
+
+# Production with Gunicorn + Uvicorn workers
+CMD ["sh", "-c", "gunicorn app.main:app --workers 3 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --access-logfile -"]
