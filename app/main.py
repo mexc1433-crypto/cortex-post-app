@@ -169,13 +169,17 @@ async def debug():
     }
 
 # Webhook Handler (النسخة المستقرة v3.0)
+# ====================== Webhook Handler (v3.0 Bulletproof) ======================
 @app.post("/webhook/bot")
 async def telegram_webhook(request: Request):
-    global _webhook_updates_received, _webhook_updates_processed, _webhook_updates_errors
+    """Telegram Webhook - مستقر 100% (بدون middleware تدخل)"""
+    global _webhook_updates_received, _webhook_updates_processed, _webhook_updates_errors, _last_webhook_update_time
+
     _webhook_updates_received += 1
     _last_webhook_update_time = datetime.utcnow().isoformat()
 
     if not settings.use_webhook or not bot or not dp:
+        logger.warning("Webhook received but bot not ready")
         return Response(status_code=200)
 
     try:
@@ -185,15 +189,41 @@ async def telegram_webhook(request: Request):
 
         body = json.loads(raw_body)
         update = Update.model_validate(body)
+
         await dp.feed_update(bot, update)
         _webhook_updates_processed += 1
+        logger.info(f"Webhook processed successfully (total: {_webhook_updates_processed})")
+
         return Response(status_code=200)
+
     except Exception as e:
         _webhook_updates_errors += 1
-        logger.error(f"Webhook error: {e}")
-        return Response(status_code=200)
+        logger.error(f"Webhook processing error: {e}", exc_info=True)
+        return Response(status_code=200)  # مهم: دايما 200 عشان Telegram ميعيدش
+
+
+# ====================== Extra Endpoints ======================
+@app.get("/debug")
+async def debug():
+    return {
+        "status": "running",
+        "version": "3.1.0",
+        "uptime": round(time.time() - _startup_time, 1) if _startup_time else 0,
+        "bot_ready": bool(bot),
+        "webhook_mode": settings.use_webhook,
+        "updates": {
+            "received": _webhook_updates_received,
+            "processed": _webhook_updates_processed,
+            "errors": _webhook_updates_errors
+        }
+    }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host=settings.WEBAPP_HOST, port=settings.WEBAPP_PORT)
+    uvicorn.run(
+        "app.main:app",
+        host=settings.WEBAPP_HOST,
+        port=settings.WEBAPP_PORT,
+        log_level="info"
+    )
