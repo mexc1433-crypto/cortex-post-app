@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     TWITTER_ACCESS_TOKEN: Optional[str] = None
     TWITTER_ACCESS_SECRET: Optional[str] = None
 
+    # Instagram
+    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None
+    INSTAGRAM_ACCOUNT_ID: Optional[str] = None
+    
     # External APIs
     WEATHER_API_KEY: Optional[str] = None
     SPORTS_API_KEY: Optional[str] = None
