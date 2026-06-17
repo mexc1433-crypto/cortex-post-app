@@ -14,22 +14,22 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+from aiogram.types import Update
+
 from app.config import settings
 from app.database.connection import db
 from app.database import crud
 from app.bot.handlers import all_routers
 from app.publishers.telegram_publisher import telegram_publisher
 from app.engine.scheduler import cortex_scheduler
+from app.core.redis import get_redis, close_redis   # إذا أنشأت الملف
 
-# ====================== Logging ======================
-logger.add("logs/cortex_post.log", rotation="10 MB", retention="30 days", level="INFO", encoding="utf-8")
-
-# ====================== Rate Limiter ======================
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
-
-# Global variables
-bot: Optional["Bot"] = None
-dp: Optional["Dispatcher"] = None
+# ====================== Globals ======================
+bot: Optional[Bot] = None
+dp: Optional[Dispatcher] = None
 _startup_complete = False
 _startup_error: Optional[str] = None
 _startup_time: float = 0
@@ -45,17 +45,15 @@ ALLOWED_UPDATE_TYPES = ["message", "callback_query", "my_chat_member", "chat_mem
 async def lifespan(app: FastAPI):
     global _startup_time
     _startup_time = time.time()
-
-    logger.info("🚀 Starting Cortex Post v3.1 (Enhanced)")
+    logger.info("🚀 Starting Cortex Post v3.1 Enhanced")
 
     await init_database()
     asyncio.create_task(_background_init())
 
     yield
 
-    # Shutdown
     await shutdown_services()
-    logger.info("🛑 Cortex Post shutdown complete")
+    logger.info("🛑 Shutdown complete")
 
 
 async def init_database():
@@ -71,14 +69,36 @@ async def _background_init():
     await asyncio.sleep(2)
     await init_bot()
     await init_scheduler()
-    logger.success("✅ All services initialized")
+    logger.success("✅ All services ready")
 
 
 async def init_bot():
-    # ... (ابقِ الكود الأصلي هنا مع تعديل بسيط: استخدم logger بدل logging)
-    # أعدل الـ logger.info → logger.info و logger.error → logger.error
-    global bot, dp
-    # (انسخ باقي init_bot من الكود الأصلي وغير logging إلى logger)
+    global bot, dp, _startup_complete, _startup_error
+    if not settings.is_bot_configured:
+        logger.warning("BOT_TOKEN not set")
+        _startup_complete = True
+        return
+
+    try:
+        bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        me = await bot.get_me()
+        logger.info(f"✅ Bot connected: @{me.username}")
+
+        dp = Dispatcher(storage=MemoryStorage())
+        for router in all_routers:
+            dp.include_router(router)
+
+        telegram_publisher.set_bot(bot)
+
+        # Webhook setup...
+        if settings.use_webhook:
+            # (انسخ باقي webhook setup logic من النسخة القديمة)
+            pass
+
+        _startup_complete = True
+    except Exception as e:
+        logger.error(f"Bot init failed: {e}")
+        _startup_error = str(e)
 
 
 async def init_scheduler():
@@ -86,41 +106,43 @@ async def init_scheduler():
         await cortex_scheduler.start()
         logger.success("✅ Scheduler started")
     except Exception as e:
-        logger.error(f"❌ Scheduler error: {e}")
+        logger.error(f"Scheduler error: {e}")
 
 
 async def shutdown_services():
-    # ... (انسخ shutdown logic من الكود الأصلي)
-    pass
+    if bot:
+        await bot.session.close()
+    await close_redis()
+    try:
+        await db.disconnect()
+    except:
+        pass
 
 
-# ====================== FastAPI App ======================
-app = FastAPI(
-    title="Cortex Post",
-    version="3.1.0",
-    lifespan=lifespan,
-)
+# ====================== FastAPI ======================
+app = FastAPI(title="Cortex Post", version="3.1.0", lifespan=lifespan)
 
-# Rate limit middleware
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     try:
-        response = await limiter.limit(call_next)(request)
-        return response
+        return await limiter.limit(call_next)(request)
     except RateLimitExceeded:
         return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
 
-app.include_router(api_router)  # من app.api.routes
+# Routes & Static
+from app.api.routes import api_router
+app.include_router(api_router)
 
-# Static files
 static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-# باقي الـ endpoints (health, debug, webhook, إلخ) ابقيها كما هي مع تغيير logging إلى logger
+# Health, Debug, Webhook endpoints (انسخ من النسخة الأصلية v3.0)
+# ... (health, /debug, /webhook/bot, etc.)
 
-# Webhook endpoint (ابقِ النسخة v3.0 الممتازة)
-@app.post("/webhook/bot")
-async def telegram_webhook(request: Request):
-    # ... (ابقِ الكود الأصلي كما هو - ممتاز)
-    pass
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host=settings.WEBAPP_HOST, port=settings.WEBAPP_PORT, reload=False)
