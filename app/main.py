@@ -46,13 +46,14 @@ ALLOWED_UPDATE_TYPES = ["message", "callback_query", "my_chat_member", "chat_mem
 async def lifespan(app: FastAPI):
     global _startup_time
     _startup_time = time.time()
-    logger.info("🚀 Starting Cortex Post v3.1 Enhanced Production")
+    logger.info("🚀 Starting Cortex Post v3.1 - Production Ready")
 
     await init_database()
     asyncio.create_task(_background_init())
 
     yield
     await shutdown_services()
+    logger.info("🛑 Shutdown complete")
 
 
 async def init_database():
@@ -92,7 +93,6 @@ async def init_bot():
 
         telegram_publisher.set_bot(bot)
 
-        # Webhook setup (انسخ المنطق الكامل من النسخة v3.0 الأصلية)
         if settings.use_webhook:
             webhook_url = f"{settings.WEBAPP_URL}/webhook/bot"
             await bot.delete_webhook(drop_pending_updates=True)
@@ -131,10 +131,9 @@ async def shutdown_services():
         await db.disconnect()
     except:
         pass
-    logger.info("🛑 Shutdown complete")
 
 
-# ====================== FastAPI ======================
+# ====================== FastAPI App ======================
 app = FastAPI(title="Cortex Post", version="3.1.0", lifespan=lifespan)
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
@@ -150,23 +149,50 @@ async def rate_limit_middleware(request: Request, call_next):
 from app.api.routes import api_router
 app.include_router(api_router)
 
-# Static
+# Static files
 static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-# Health & Debug endpoints (انسخ من النسخة الأصلية)
+# ====================== Endpoints ======================
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "3.1.0"}
 
-# Webhook (انسخ النسخة v3.0 الكاملة من قبل)
+@app.get("/debug")
+async def debug():
+    return {
+        "status": "running",
+        "uptime": round(time.time() - _startup_time, 1) if _startup_time else 0,
+        "bot": bool(bot),
+        "webhook": settings.use_webhook
+    }
+
+# Webhook Handler (النسخة المستقرة v3.0)
 @app.post("/webhook/bot")
 async def telegram_webhook(request: Request):
-    # استخدم الكود الأصلي v3.0 الكامل هنا
     global _webhook_updates_received, _webhook_updates_processed, _webhook_updates_errors
-    # ... (paste the full webhook function from your original main.py)
-    pass   # استبدله بالكود الأصلي
+    _webhook_updates_received += 1
+    _last_webhook_update_time = datetime.utcnow().isoformat()
+
+    if not settings.use_webhook or not bot or not dp:
+        return Response(status_code=200)
+
+    try:
+        raw_body = await request.body()
+        if not raw_body:
+            return Response(status_code=200)
+
+        body = json.loads(raw_body)
+        update = Update.model_validate(body)
+        await dp.feed_update(bot, update)
+        _webhook_updates_processed += 1
+        return Response(status_code=200)
+    except Exception as e:
+        _webhook_updates_errors += 1
+        logger.error(f"Webhook error: {e}")
+        return Response(status_code=200)
+
 
 if __name__ == "__main__":
     import uvicorn
