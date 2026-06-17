@@ -18,5 +18,4 @@ cryptography==43.0.1
 loguru==0.7.2
 slowapi==0.1.9
 redis==5.0.8
-hiredis==2.1.0  # optional للأداء
-celery==5.4.0   # للـ background tasks (اختياري لكن قوي)
+hiredis==2.1.0
